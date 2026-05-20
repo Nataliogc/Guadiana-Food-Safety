@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { Download, Upload, RefreshCw, CheckCircle, Database } from 'lucide-react';
 import { supabase } from '../utils/supabase';
+import initialData from '../../data/initial-data.json';
 
 interface ImportExportPanelProps {
   items: any[];
@@ -105,89 +106,60 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = ({
 
   // 3. Importación inicial desde data/initial-data.json
   const handleImportInitialData = async () => {
-    if (!isAdminOrCocina) {
-      showStatus('No tienes permisos suficientes para realizar importaciones.', true);
+    if (userRole !== 'admin') {
+      showStatus('No tienes permisos suficientes para realizar importaciones. Debes ser Administrador.', true);
       return;
     }
 
-    if (!window.confirm('¿Seguro que deseas importar el catálogo inicial? Se insertarán los platos del Hotel Guadiana en la base de datos.')) {
+    if (!window.confirm('¿Seguro que deseas importar el catálogo inicial? Se insertarán/actualizarán los platos del Hotel Guadiana en la base de datos.')) {
       return;
     }
 
     setLoading(true);
     try {
-      const response = await fetch('/data/initial-data.json');
-      if (!response.ok) {
-        throw new Error('No se pudo encontrar el archivo initial-data.json en la ruta indicada.');
-      }
+      const foodItemsToInsert = initialData.food_items || [];
       
-      const data = await response.json();
-      const rawRecords = data.records || [];
-      
-      if (!rawRecords.length) {
+      if (!foodItemsToInsert.length) {
         showStatus('El archivo JSON inicial no contiene platos válidos.', true);
         return;
       }
 
-      // Mapear registros de initial-data a columnas de food_items
-      const foodItemsToInsert = rawRecords.map((r: any) => {
-        // Mapear estado para cumplir check constraint: 'pendiente', 'en_revision', 'validado'
-        let cleanStatus = 'pendiente';
-        const rawStatus = String(r.estado || '').toLowerCase();
-        if (rawStatus.includes('validado')) {
-          cleanStatus = 'validado';
-        } else if (rawStatus.includes('revision') || rawStatus.includes('revisar')) {
-          cleanStatus = 'en_revision';
-        }
+      // Obtener platos existentes para calcular creados vs actualizados
+      const { data: existingItems, error: fetchError } = await supabase
+        .from('food_items')
+        .select('area, category, name');
+        
+      if (fetchError) throw fetchError;
 
-        return {
-          area: r.area || 'General',
-          category: r.categoria || 'Otros',
-          name: r.plato || 'Plato sin nombre',
-          ingredients: r.ingredientes || null,
-          allergen_codes: r.codigos || null,
-          allergens: r.alergenos || null,
-          traces: r.trazas || null,
-          preparation: r.elaboracion || null,
-          supplier_notes: r.observaciones || null,
-          status: cleanStatus
-        };
+      const existingKeys = new Set(
+        existingItems?.map(x => `${x.area}|${x.category}|${x.name}`.toLowerCase()) || []
+      );
+
+      let createdCount = 0;
+      let updatedCount = 0;
+
+      foodItemsToInsert.forEach((item: any) => {
+        const key = `${item.area}|${item.category}|${item.name}`.toLowerCase();
+        if (existingKeys.has(key)) {
+          updatedCount++;
+        } else {
+          createdCount++;
+        }
       });
 
-      // Insertar por lotes de 100 para evitar desbordar Supabase API
+      // Insertar/actualizar por lotes de 100 para evitar desbordar Supabase API
       const batchSize = 100;
-      let insertedCount = 0;
       
       for (let i = 0; i < foodItemsToInsert.length; i += batchSize) {
         const batch = foodItemsToInsert.slice(i, i + batchSize);
-        const { error } = await supabase.from('food_items').insert(batch);
+        const { error } = await supabase
+          .from('food_items')
+          .upsert(batch, { onConflict: 'area,category,name' });
         
         if (error) throw error;
-        insertedCount += batch.length;
       }
 
-      // Opcional: Cargar tareas del JSON
-      const rawTasks = data.tasks || [];
-      if (rawTasks.length) {
-        const tasksToInsert = rawTasks.map((t: any) => {
-          let cleanStatus = 'pendiente';
-          if (t.estado === 'Completado') cleanStatus = 'completada';
-          else if (t.estado === 'En curso') cleanStatus = 'en_proceso';
-
-          return {
-            title: t.tarea || 'Tarea sin título',
-            description: null,
-            area: t.area || 'General',
-            priority: 'media',
-            status: cleanStatus,
-            assigned_to: t.responsable || null,
-            due_date: null
-          };
-        });
-        await supabase.from('tasks').insert(tasksToInsert);
-      }
-
-      showStatus(`Importación completada con éxito. Se han insertado ${insertedCount} platos.`);
+      showStatus(`Importación completada con éxito. Se han creado ${createdCount} platos y se han actualizado ${updatedCount} platos.`);
       await onRefreshData();
     } catch (err: any) {
       console.error(err);
@@ -303,28 +275,25 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = ({
         </div>
 
         {/* Initial seed data */}
-        <div className="panel">
-          <div className="panel-header">
-            <h3>Inicialización del Catálogo</h3>
-          </div>
-          <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: '20px' }}>
-            Carga el catálogo inicial técnico del Hotel Guadiana (Cafetería, Buffet, Deporte, Cócteles y Eventos) desde la carpeta local <code>initial-data.json</code>.
-          </p>
-          <button 
-            className="btn btn-primary" 
-            onClick={handleImportInitialData}
-            disabled={loading || !isAdminOrCocina}
-            style={{ width: '100%', justifyContent: 'center' }}
-          >
-            {loading ? <RefreshCw size={16} className="spin" /> : <Database size={16} />}
-            <span>Importar Catálogo Inicial (JSON)</span>
-          </button>
-          {!isAdminOrCocina && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--color-text-muted)', marginTop: '8px', textAlign: 'center' }}>
-              * Solo usuarios con rol Administrador o Cocina pueden realizar la importación.
+        {userRole === 'admin' && (
+          <div className="panel">
+            <div className="panel-header">
+              <h3>Inicialización del Catálogo</h3>
+            </div>
+            <p style={{ fontSize: '0.9rem', color: 'var(--color-text-muted)', marginBottom: '20px' }}>
+              Carga el catálogo inicial técnico del Hotel Guadiana (Cafetería, Buffet, Deporte, Cócteles y Eventos) desde la carpeta local <code>initial-data.json</code>.
             </p>
-          )}
-        </div>
+            <button 
+              className="btn btn-primary" 
+              onClick={handleImportInitialData}
+              disabled={loading}
+              style={{ width: '100%', justifyContent: 'center' }}
+            >
+              {loading ? <RefreshCw size={16} className="spin" /> : <Database size={16} />}
+              <span>Cargar datos iniciales</span>
+            </button>
+          </div>
+        )}
 
         {/* Import JSON File */}
         {isAdminOrCocina && (

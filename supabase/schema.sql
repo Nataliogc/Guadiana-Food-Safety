@@ -102,6 +102,15 @@ EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;
 
+-- Agregar restricción única de platos si no existe
+DO $$
+BEGIN
+  ALTER TABLE public.food_items ADD CONSTRAINT unique_food_item UNIQUE (area, category, name);
+EXCEPTION
+  WHEN OTHERS THEN NULL;
+END $$;
+
+
 -- ---------------------------------------------------------------------
 -- 4. TABLA: tasks
 -- ---------------------------------------------------------------------
