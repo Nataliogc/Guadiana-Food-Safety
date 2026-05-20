@@ -261,13 +261,17 @@ ALTER TABLE public.audit_log ENABLE ROW LEVEL SECURITY;
 -- POLÍTICAS: profiles
 DROP POLICY IF EXISTS "profiles_select_authenticated" ON public.profiles;
 CREATE POLICY "profiles_select_authenticated" ON public.profiles 
-  FOR SELECT TO authenticated USING (true);
+  FOR SELECT TO authenticated 
+  USING (id = auth.uid() OR public.current_user_role() = 'admin');
 
 DROP POLICY IF EXISTS "profiles_update_own_or_admin" ON public.profiles;
 CREATE POLICY "profiles_update_own_or_admin" ON public.profiles 
   FOR UPDATE TO authenticated 
   USING (id = auth.uid() OR public.current_user_role() = 'admin') 
-  WITH CHECK (id = auth.uid() OR public.current_user_role() = 'admin');
+  WITH CHECK (
+    public.current_user_role() = 'admin' 
+    OR (id = auth.uid() AND role = (SELECT role FROM public.profiles WHERE id = auth.uid()))
+  );
 
 -- POLÍTICAS: suppliers
 DROP POLICY IF EXISTS "suppliers_select_authenticated" ON public.suppliers;

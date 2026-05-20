@@ -439,6 +439,8 @@ function App() {
             recentPendingItems={stats.recentPending}
             onViewItems={() => setActiveView('items')}
             onViewTasks={() => setActiveView('tasks')}
+            onViewUsers={() => setActiveView('users')}
+            profileRole={profile.role}
           />
         );
       case 'items':

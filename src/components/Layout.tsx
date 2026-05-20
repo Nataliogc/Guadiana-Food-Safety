@@ -127,6 +127,38 @@ export const Layout: React.FC<LayoutProps> = ({
         </header>
 
         <main className="content-body">
+          {profileRole === 'admin' && (
+            <div style={{ padding: '10px 16px', backgroundColor: '#e6fffa', borderLeft: '4px solid #319795', color: '#234e52', fontSize: '0.8rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }} className="no-print">
+              <ShieldCheck size={16} style={{ color: '#319795' }} />
+              <div>
+                <strong>Acceso Administrador:</strong> Tienes control total del sistema (configuración de alérgenos, informes y gestión de usuarios).
+              </div>
+            </div>
+          )}
+          {profileRole === 'cocina' && (
+            <div style={{ padding: '10px 16px', backgroundColor: '#f0fff4', borderLeft: '4px solid #38a169', color: '#22543d', fontSize: '0.8rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }} className="no-print">
+              <ShieldCheck size={16} style={{ color: '#38a169' }} />
+              <div>
+                <strong>Acceso Cocina:</strong> Tienes permisos para revisar, editar y validar platos/productos.
+              </div>
+            </div>
+          )}
+          {profileRole === 'sala' && (
+            <div style={{ padding: '10px 16px', backgroundColor: '#ebf8ff', borderLeft: '4px solid #3182ce', color: '#2a4365', fontSize: '0.8rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }} className="no-print">
+              <ShieldCheck size={16} style={{ color: '#3182ce' }} />
+              <div>
+                <strong>Acceso Sala / Restauración:</strong> Tienes permisos para consultar platos y crear/gestionar tareas.
+              </div>
+            </div>
+          )}
+          {profileRole === 'consulta' && (
+            <div style={{ padding: '10px 16px', backgroundColor: '#f7fafc', borderLeft: '4px solid #a0aec0', color: '#4a5568', fontSize: '0.8rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }} className="no-print">
+              <ShieldCheck size={16} style={{ color: '#a0aec0' }} />
+              <div>
+                <strong>Acceso Consulta:</strong> Tienes acceso de solo lectura al catálogo.
+              </div>
+            </div>
+          )}
           {children}
         </main>
       </div>

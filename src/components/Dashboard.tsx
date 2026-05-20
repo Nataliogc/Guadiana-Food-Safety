@@ -16,6 +16,8 @@ interface DashboardProps {
   recentPendingItems: Array<{ id: string; name: string; area: string; category: string; status: string }>;
   onViewItems: () => void;
   onViewTasks: () => void;
+  onViewUsers?: () => void;
+  profileRole?: string;
 }
 
 export const Dashboard: React.FC<DashboardProps> = ({
@@ -26,10 +28,39 @@ export const Dashboard: React.FC<DashboardProps> = ({
   criticalTasks,
   recentPendingItems,
   onViewItems,
-  onViewTasks
+  onViewTasks,
+  onViewUsers,
+  profileRole
 }) => {
   return (
     <div>
+      {/* Admin Quick Link */}
+      {profileRole === 'admin' && onViewUsers && (
+        <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          backgroundColor: '#eff6ff',
+          border: '1px solid #bfdbfe',
+          padding: '12px 20px',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: '20px',
+          fontSize: '0.88rem',
+          color: '#1e40af'
+        }} className="no-print">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Users size={18} style={{ color: '#3b82f6' }} />
+            <span><strong>Panel de Control:</strong> Acceso rápido a la administración de roles y usuarios de la plantilla.</span>
+          </div>
+          <button 
+            className="btn btn-primary btn-small" 
+            onClick={onViewUsers}
+            style={{ backgroundColor: '#3b82f6', borderColor: '#3b82f6' }}
+          >
+            Gestión de usuarios
+          </button>
+        </div>
+      )}
       {/* Statistics Counters */}
       <div className="stats-grid">
         <div className="stat-card">
