@@ -8,7 +8,7 @@ import { SuppliersTable } from './components/SuppliersTable';
 import { SupplierForm } from './components/SupplierForm';
 import { TasksPanel } from './components/TasksPanel';
 import { ImportExportPanel } from './components/ImportExportPanel';
-import { ShieldAlert, LogIn, UserPlus } from 'lucide-react';
+import { ShieldAlert, LogIn, UserPlus, RefreshCw } from 'lucide-react';
 
 interface Toast {
   id: string;
@@ -21,12 +21,14 @@ function App() {
   const [session, setSession] = useState<any>(null);
   const [profile, setProfile] = useState<any>({ role: 'consulta', full_name: '' });
   const [authLoading, setAuthLoading] = useState(true);
-  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [authMode, setAuthMode] = useState<'login' | 'signup' | 'reset-password'>('login');
   
   // Auth Form State
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
   // App Data
   const [foodItems, setFoodItems] = useState<any[]>([]);
@@ -61,8 +63,21 @@ function App() {
       setAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    // Detect recovery/reset-password from URL params or hash
+    const params = new URLSearchParams(window.location.search);
+    const isReset = window.location.pathname.endsWith('/reset-password') || 
+                    window.location.hash.includes('reset-password') || 
+                    window.location.hash.includes('type=recovery') ||
+                    params.has('reset');
+    if (isReset) {
+      setAuthMode('reset-password');
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
+      if (event === 'PASSWORD_RECOVERY') {
+        setAuthMode('reset-password');
+      }
       if (!session) {
         setProfile({ role: 'consulta', full_name: '' });
         setFoodItems([]);
@@ -138,6 +153,58 @@ function App() {
       addToast('Sesión iniciada correctamente.', 'success');
     } catch (err: any) {
       addToast(err.message || 'Error de conexión', 'error');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      addToast('Por favor, introduce tu correo electrónico en el campo superior.', 'error');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const isGitHubPages = window.location.hostname.includes('github.io');
+      const redirectTo = isGitHubPages
+        ? window.location.origin + window.location.pathname + '?reset=true'
+        : window.location.origin + '/reset-password';
+
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: redirectTo
+      });
+      if (error) throw error;
+      addToast('Si el correo existe, recibirás un enlace para restablecer la contraseña.', 'success');
+    } catch (err: any) {
+      addToast(err.message || 'Error al procesar la solicitud', 'error');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newPassword) return;
+    if (newPassword !== confirmPassword) {
+      addToast('Las contraseñas no coinciden.', 'error');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword
+      });
+      if (error) throw error;
+      
+      addToast('Contraseña restablecida con éxito. Inicia sesión con tus nuevas credenciales.', 'success');
+      
+      await supabase.auth.signOut();
+      setNewPassword('');
+      setConfirmPassword('');
+      setAuthMode('login');
+      window.history.replaceState(null, '', window.location.origin + window.location.pathname);
+    } catch (err: any) {
+      addToast(err.message || 'Error al actualizar contraseña. El enlace puede haber caducado.', 'error');
     } finally {
       setAuthLoading(false);
     }
@@ -422,8 +489,8 @@ function App() {
     );
   }
 
-  // If not logged in, show Login Screen
-  if (!session) {
+  // If not logged in or in reset-password mode, show Auth Screen
+  if (!session || authMode === 'reset-password') {
     return (
       <div className="login-backdrop">
         <div className="login-card">
@@ -436,62 +503,140 @@ function App() {
             </p>
           </div>
 
-          <form onSubmit={authMode === 'login' ? handleLogin : handleSignup} className="login-form">
-            {authMode === 'signup' && (
+          {authMode === 'reset-password' ? (
+            <form onSubmit={handleResetPassword} className="login-form">
+              <h3 style={{ fontSize: '1.1rem', color: 'var(--color-primary)', textAlign: 'center', marginBottom: '10px' }}>
+                Restablecer Contraseña
+              </h3>
+              <p style={{ fontSize: '0.85rem', color: 'var(--color-text-muted)', textAlign: 'center', marginBottom: '15px' }}>
+                Introduce tu nueva contraseña a continuación.
+              </p>
+              
               <div className="form-group">
-                <label className="form-label">Nombre Completo</label>
+                <label className="form-label">Nueva Contraseña</label>
                 <input 
-                  type="text" 
-                  value={fullName}
-                  onChange={(e) => setFullName(e.target.value)}
-                  placeholder="Natalio Fernández"
+                  type="password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  placeholder="••••••••"
                   required
                   className="form-input"
                 />
               </div>
-            )}
 
-            <div className="form-group">
-              <label className="form-label">Correo Electrónico</label>
-              <input 
-                type="email" 
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="comunicaciones@hotelguadiana.es"
-                required
-                className="form-input"
-              />
-            </div>
+              <div className="form-group">
+                <label className="form-label">Confirmar Contraseña</label>
+                <input 
+                  type="password" 
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="form-input"
+                />
+              </div>
 
-            <div className="form-group">
-              <label className="form-label">Contraseña</label>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••"
-                required
-                className="form-input"
-              />
-            </div>
+              <div className="login-actions">
+                <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }} disabled={authLoading}>
+                  {authLoading ? <RefreshCw size={16} className="spin" /> : <ShieldAlert size={16} />}
+                  <span>Actualizar contraseña</span>
+                </button>
 
-            <div className="login-actions">
-              <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }}>
-                <LogIn size={16} />
-                <span>{authMode === 'login' ? 'Entrar al Panel' : 'Registrarse'}</span>
-              </button>
+                <button 
+                  type="button" 
+                  onClick={async () => {
+                    await supabase.auth.signOut();
+                    setAuthMode('login');
+                    window.history.replaceState(null, '', window.location.origin + window.location.pathname);
+                  }}
+                  className="btn btn-outline"
+                  style={{ justifyContent: 'center', fontSize: '0.8rem' }}
+                  disabled={authLoading}
+                >
+                  <span>Cancelar</span>
+                </button>
+              </div>
+            </form>
+          ) : (
+            <form onSubmit={authMode === 'login' ? handleLogin : handleSignup} className="login-form">
+              {authMode === 'signup' && (
+                <div className="form-group">
+                  <label className="form-label">Nombre Completo</label>
+                  <input 
+                    type="text" 
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    placeholder="Natalio Fernández"
+                    required
+                    className="form-input"
+                  />
+                </div>
+              )}
 
-              <button 
-                type="button" 
-                onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
-                className="btn btn-outline"
-                style={{ justifyContent: 'center', fontSize: '0.8rem' }}
-              >
-                <UserPlus size={14} />
-                <span>{authMode === 'login' ? 'Crear nueva cuenta' : '¿Ya tienes cuenta? Inicia sesión'}</span>
-              </button>
-            </div>
-          </form>
+              <div className="form-group">
+                <label className="form-label">Correo Electrónico</label>
+                <input 
+                  type="email" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="comunicaciones@hotelguadiana.es"
+                  required
+                  className="form-input"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Contraseña</label>
+                <input 
+                  type="password" 
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  className="form-input"
+                />
+              </div>
+
+              {authMode === 'login' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '-12px' }}>
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    disabled={authLoading}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--color-secondary)',
+                      fontSize: '0.8rem',
+                      cursor: 'pointer',
+                      textDecoration: 'underline',
+                      padding: 0
+                    }}
+                  >
+                    He olvidado mi contraseña
+                  </button>
+                </div>
+              )}
+
+              <div className="login-actions">
+                <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }} disabled={authLoading}>
+                  {authLoading ? <RefreshCw size={16} className="spin" /> : <LogIn size={16} />}
+                  <span>{authMode === 'login' ? 'Entrar al Panel' : 'Registrarse'}</span>
+                </button>
+
+                <button 
+                  type="button" 
+                  onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                  className="btn btn-outline"
+                  style={{ justifyContent: 'center', fontSize: '0.8rem' }}
+                  disabled={authLoading}
+                >
+                  <UserPlus size={14} />
+                  <span>{authMode === 'login' ? 'Crear nueva cuenta' : '¿Ya tienes cuenta? Inicia sesión'}</span>
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className="login-info-text">
             La seguridad del sistema está gestionada mediante Row Level Security en Supabase. 
