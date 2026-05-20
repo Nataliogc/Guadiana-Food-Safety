@@ -337,3 +337,32 @@ DROP POLICY IF EXISTS "audit_select_admin" ON public.audit_log;
 CREATE POLICY "audit_select_admin" ON public.audit_log 
   FOR SELECT TO authenticated 
   USING (public.current_user_role() = 'admin');
+
+-- ---------------------------------------------------------------------
+-- 6. TABLA: generated_reports
+-- ---------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public.generated_reports (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  generated_by uuid REFERENCES auth.users(id) ON DELETE SET NULL,
+  generated_at timestamptz NOT NULL DEFAULT now(),
+  report_type text NOT NULL,
+  filters_used jsonb NOT NULL,
+  total_items integer NOT NULL,
+  pending_items integer NOT NULL,
+  validated_items integer NOT NULL,
+  notes text
+);
+
+-- Habilitar RLS
+ALTER TABLE public.generated_reports ENABLE ROW LEVEL SECURITY;
+
+-- Políticas de RLS para generated_reports
+DROP POLICY IF EXISTS "reports_select_admin_cocina" ON public.generated_reports;
+CREATE POLICY "reports_select_admin_cocina" ON public.generated_reports
+  FOR SELECT TO authenticated
+  USING (public.current_user_role() IN ('admin', 'cocina'));
+
+DROP POLICY IF EXISTS "reports_insert_authenticated" ON public.generated_reports;
+CREATE POLICY "reports_insert_authenticated" ON public.generated_reports
+  FOR INSERT TO authenticated
+  WITH CHECK (true);

@@ -37,9 +37,9 @@ export const Layout: React.FC<LayoutProps> = ({
   const navItems = [
     { id: 'dashboard', label: 'Resumen', icon: <LayoutDashboard size={20} /> },
     { id: 'items', label: 'Platos / Productos', icon: <Utensils size={20} /> },
+    { id: 'audit', label: 'Informe Sanidad', icon: <ShieldCheck size={20} /> },
     { id: 'suppliers', label: 'Proveedores', icon: <Truck size={20} /> },
     { id: 'tasks', label: 'Tareas', icon: <CheckSquare size={20} /> },
-    { id: 'audit', label: 'Auditoría y Sanidad', icon: <ShieldCheck size={20} /> },
     ...(profileRole === 'admin' ? [{ id: 'users', label: 'Control de Usuarios', icon: <Users size={20} /> }] : []),
     { id: 'import', label: 'Importar / Exportar', icon: <UploadCloud size={20} /> },
   ];
