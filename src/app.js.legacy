@@ -1,0 +1,226 @@
+const cfg = window.APP_CONFIG || {};
+let client = null;
+let session = null;
+let currentUser = null;
+let state = { items: [], suppliers: [], tasks: [], allergens: [] };
+
+const $ = (s) => document.querySelector(s);
+const $$ = (s) => Array.from(document.querySelectorAll(s));
+const esc = (v='') => String(v ?? '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+const toast = (msg) => { const t=$('#toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',3500); };
+const normalizeCodes = (value='') => String(value).split(/[,/]/).map(x=>parseInt(x.trim(),10)).filter(n=>Number.isFinite(n));
+const csvCell = (v='') => '"' + String(v ?? '').replaceAll('"','""').replaceAll('\n',' ') + '"';
+
+function initSupabase(){
+  if (!cfg.SUPABASE_URL || !cfg.SUPABASE_ANON_KEY || cfg.SUPABASE_URL.includes('TU-PROYECTO')) {
+    $('#configStatus').textContent = 'Pendiente configurar config.js con SUPABASE_URL y SUPABASE_ANON_KEY.';
+    return false;
+  }
+  client = supabase.createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
+  $('#configStatus').textContent = `Conectado a: ${cfg.SUPABASE_URL}\nLa seguridad depende de RLS en Supabase.`;
+  return true;
+}
+
+async function init(){
+  bindEvents();
+  initSupabase();
+  if (!client) { renderAll(); return; }
+  const res = await client.auth.getSession();
+  session = res.data.session;
+  await refreshSessionBox();
+  if (session) await loadAll();
+  client.auth.onAuthStateChange(async (_event, newSession) => { session = newSession; await refreshSessionBox(); if (session) await loadAll(); else { state={items:[],suppliers:[],tasks:[],allergens:[]}; renderAll(); }});
+}
+
+function bindEvents(){
+  $$('.nav').forEach(btn => btn.addEventListener('click', () => showView(btn.dataset.view)));
+  $('#btnLogin').addEventListener('click', login);
+  $('#btnSignup').addEventListener('click', signup);
+  $('#btnLogout').addEventListener('click', logout);
+  $('#search').addEventListener('input', renderItems);
+  $('#areaFilter').addEventListener('change', renderItems);
+  $('#statusFilter').addEventListener('change', renderItems);
+  $('#btnNewItem').addEventListener('click', () => openItemDialog());
+  $('#btnNewSupplier').addEventListener('click', () => openSupplierDialog());
+  $('#btnNewTask').addEventListener('click', () => openTaskDialog());
+  $('#btnSeed').addEventListener('click', seedInitialData);
+  $('#btnExportJson').addEventListener('click', exportJson);
+  $('#btnExportCsv').addEventListener('click', exportCsv);
+  $('#btnPrint').addEventListener('click', () => window.print());
+  $('#btnImportJson').addEventListener('click', importJsonFile);
+}
+
+function showView(name){
+  $$('.nav').forEach(b=>b.classList.toggle('active', b.dataset.view===name));
+  $$('.view').forEach(v=>v.classList.remove('active'));
+  $(`#view-${name}`).classList.add('active');
+}
+
+async function refreshSessionBox(){
+  const dot = $('#sessionBox .status-dot');
+  if (!session) { dot.className='status-dot offline'; $('#sessionText').textContent='Sin sesión'; currentUser=null; return; }
+  dot.className='status-dot online';
+  currentUser = session.user;
+  $('#sessionText').textContent = session.user.email;
+}
+
+async function login(){
+  if (!client) return toast('Primero configura Supabase en config.js');
+  const email=$('#email').value.trim(); const password=$('#password').value;
+  const { error } = await client.auth.signInWithPassword({ email, password });
+  if (error) return toast(error.message);
+  toast('Sesión iniciada');
+}
+async function signup(){
+  if (!client) return toast('Primero configura Supabase en config.js');
+  const email=$('#email').value.trim(); const password=$('#password').value;
+  const { error } = await client.auth.signUp({ email, password });
+  if (error) return toast(error.message);
+  toast('Usuario creado. Si Supabase pide confirmación, revisa el correo. Después asigna rol en profiles.');
+}
+async function logout(){ if(client) await client.auth.signOut(); }
+
+async function loadAll(){
+  if (!client || !session) return;
+  const [items, suppliers, tasks, allergens] = await Promise.all([
+    client.from('items').select('*').order('area').order('category').order('name'),
+    client.from('suppliers').select('*').order('name'),
+    client.from('tasks').select('*').order('created_at', { ascending:false }),
+    client.from('allergens').select('*').order('code')
+  ]);
+  for (const r of [items,suppliers,tasks,allergens]) { if (r.error) toast(r.error.message); }
+  state.items = items.data || [];
+  state.suppliers = suppliers.data || [];
+  state.tasks = tasks.data || [];
+  state.allergens = allergens.data || [];
+  renderAll();
+}
+
+function renderAll(){ renderStats(); renderFilters(); renderItems(); renderSuppliers(); renderTasks(); }
+function renderStats(){
+  $('#statTotal').textContent = state.items.length;
+  $('#statValidated').textContent = state.items.filter(x=>String(x.status||'').toLowerCase().includes('validado')).length;
+  $('#statPending').textContent = state.items.filter(x=>!String(x.status||'').toLowerCase().includes('validado')).length;
+  $('#statSuppliers').textContent = state.suppliers.length;
+}
+function renderFilters(){
+  const area=$('#areaFilter').value;
+  const areas=[...new Set(state.items.map(x=>x.area).filter(Boolean))].sort();
+  $('#areaFilter').innerHTML='<option value="">Todas las áreas</option>'+areas.map(a=>`<option ${a===area?'selected':''}>${esc(a)}</option>`).join('');
+}
+function filteredItems(){
+  const q=$('#search').value.toLowerCase(); const area=$('#areaFilter').value; const st=$('#statusFilter').value;
+  return state.items.filter(x => {
+    const text=[x.area,x.category,x.name,x.ingredients,x.allergen_text,x.traces,x.supplier_name,x.observations].join(' ').toLowerCase();
+    return (!q || text.includes(q)) && (!area || x.area===area) && (!st || x.status===st);
+  });
+}
+function renderItems(){
+  const tb=$('#itemsTable tbody');
+  tb.innerHTML = filteredItems().map(x => `
+    <tr>
+      <td>${esc(x.area)}</td><td>${esc(x.category)}</td><td><strong>${esc(x.name)}</strong><br><span class="muted">${esc(x.external_id||'')}</span></td>
+      <td>${esc((x.allergen_codes||[]).join(', '))}</td><td>${esc(x.ingredients||'')}</td><td>${esc(x.allergen_text||'')}</td>
+      <td><span class="badge ${String(x.status||'').toLowerCase().includes('validado')?'valid':'pending'}">${esc(x.status||'Pendiente')}</span></td>
+      <td><button onclick="openItemDialog('${x.id}')">Editar</button></td>
+    </tr>`).join('') || '<tr><td colspan="8">Sin registros.</td></tr>';
+}
+function renderSuppliers(){
+  $('#suppliersTable tbody').innerHTML = state.suppliers.map(x=>`
+    <tr><td><strong>${esc(x.name)}</strong></td><td>${esc(x.phone||'')}</td><td>${esc(x.products||'')}</td><td>${x.has_technical_sheet?'Sí':'Pendiente'}</td><td>${esc(x.notes||'')}</td><td><button onclick="openSupplierDialog('${x.id}')">Editar</button></td></tr>`).join('') || '<tr><td colspan="6">Sin proveedores.</td></tr>';
+}
+function renderTasks(){
+  $('#tasksTable tbody').innerHTML = state.tasks.map(x=>`
+    <tr><td>${esc(x.area||'')}</td><td>${esc(x.title||'')}</td><td>${esc(x.responsible||'')}</td><td><span class="badge pending">${esc(x.status||'Pendiente')}</span></td><td><button onclick="openTaskDialog('${x.id}')">Editar</button></td></tr>`).join('') || '<tr><td colspan="5">Sin tareas.</td></tr>';
+}
+
+function openItemDialog(id){
+  const x = id ? state.items.find(i=>i.id===id) : { status:'Pendiente validación cocina', allergen_codes:[] };
+  const dlg=$('#itemDialog');
+  dlg.innerHTML=`<div class="dialog-inner"><div class="dialog-head"><h3>${id?'Editar':'Nuevo'} plato/producto</h3><button onclick="document.getElementById('itemDialog').close()">Cerrar</button></div>
+  <div class="form">
+    <div><label>Área</label><input id="i_area" value="${esc(x.area||'')}"></div><div><label>Categoría</label><input id="i_category" value="${esc(x.category||'')}"></div>
+    <div class="full"><label>Nombre</label><input id="i_name" value="${esc(x.name||'')}"></div>
+    <div><label>Códigos alérgenos</label><input id="i_codes" value="${esc((x.allergen_codes||[]).join(', '))}"></div><div><label>Estado</label><select id="i_status"><option>Pendiente validación cocina</option><option>Validado cocina</option><option>Pendiente completar</option></select></div>
+    <div class="full"><label>Ingredientes</label><textarea id="i_ingredients" rows="3">${esc(x.ingredients||'')}</textarea></div>
+    <div class="full"><label>Alérgenos</label><textarea id="i_allergen_text" rows="2">${esc(x.allergen_text||'')}</textarea></div>
+    <div class="full"><label>Elaboración</label><textarea id="i_preparation" rows="3">${esc(x.preparation||'')}</textarea></div>
+    <div class="full"><label>Trazas / contaminación cruzada</label><textarea id="i_traces" rows="2">${esc(x.traces||'')}</textarea></div>
+    <div><label>Fuente</label><input id="i_source" value="${esc(x.source||'')}"></div><div><label>ID externo</label><input id="i_external" value="${esc(x.external_id||'')}"></div>
+    <div class="full"><label>Observaciones</label><textarea id="i_observations" rows="2">${esc(x.observations||'')}</textarea></div>
+  </div><div class="actions">${id?'<button class="danger" onclick="deleteItem(\''+id+'\')">Eliminar</button>':''}<button class="primary" onclick="saveItem('${id||''}')">Guardar</button></div></div>`;
+  $('#i_status').value=x.status||'Pendiente validación cocina'; dlg.showModal();
+}
+async function saveItem(id){
+  const data={ area:$('#i_area').value.trim(), category:$('#i_category').value.trim(), name:$('#i_name').value.trim(), allergen_codes:normalizeCodes($('#i_codes').value), status:$('#i_status').value, ingredients:$('#i_ingredients').value.trim(), allergen_text:$('#i_allergen_text').value.trim(), preparation:$('#i_preparation').value.trim(), traces:$('#i_traces').value.trim(), source:$('#i_source').value.trim(), external_id:$('#i_external').value.trim()||null, observations:$('#i_observations').value.trim(), updated_by: currentUser?.id || null };
+  let r = id ? await client.from('items').update(data).eq('id',id) : await client.from('items').insert(data);
+  if (r.error) return toast(r.error.message); $('#itemDialog').close(); toast('Registro guardado'); await loadAll();
+}
+async function deleteItem(id){ if(!confirm('¿Eliminar registro?'))return; const r=await client.from('items').delete().eq('id',id); if(r.error)return toast(r.error.message); $('#itemDialog').close(); await loadAll(); }
+
+function openSupplierDialog(id){
+  const x = id ? state.suppliers.find(i=>i.id===id) : {};
+  const dlg=$('#supplierDialog');
+  dlg.innerHTML=`<div class="dialog-inner"><div class="dialog-head"><h3>${id?'Editar':'Nuevo'} proveedor</h3><button onclick="document.getElementById('supplierDialog').close()">Cerrar</button></div><div class="form">
+    <div><label>Nombre</label><input id="s_name" value="${esc(x.name||'')}"></div><div><label>Teléfono</label><input id="s_phone" value="${esc(x.phone||'')}"></div>
+    <div class="full"><label>Productos que suministra</label><textarea id="s_products" rows="3">${esc(x.products||'')}</textarea></div>
+    <div><label>Ficha técnica</label><select id="s_sheet"><option value="false">Pendiente</option><option value="true">Disponible</option></select></div><div><label>Email</label><input id="s_email" value="${esc(x.email||'')}"></div>
+    <div class="full"><label>Observaciones</label><textarea id="s_notes" rows="3">${esc(x.notes||'')}</textarea></div></div><div class="actions">${id?'<button class="danger" onclick="deleteSupplier(\''+id+'\')">Eliminar</button>':''}<button class="primary" onclick="saveSupplier('${id||''}')">Guardar</button></div></div>`;
+  $('#s_sheet').value=String(!!x.has_technical_sheet); dlg.showModal();
+}
+async function saveSupplier(id){
+  const data={ name:$('#s_name').value.trim(), phone:$('#s_phone').value.trim(), email:$('#s_email').value.trim(), products:$('#s_products').value.trim(), has_technical_sheet:$('#s_sheet').value==='true', notes:$('#s_notes').value.trim() };
+  const r=id?await client.from('suppliers').update(data).eq('id',id):await client.from('suppliers').insert(data);
+  if(r.error)return toast(r.error.message); $('#supplierDialog').close(); await loadAll();
+}
+async function deleteSupplier(id){ if(!confirm('¿Eliminar proveedor?'))return; const r=await client.from('suppliers').delete().eq('id',id); if(r.error)return toast(r.error.message); $('#supplierDialog').close(); await loadAll(); }
+
+function openTaskDialog(id){
+  const x = id ? state.tasks.find(i=>i.id===id) : {status:'Pendiente'};
+  const dlg=$('#taskDialog');
+  dlg.innerHTML=`<div class="dialog-inner"><div class="dialog-head"><h3>${id?'Editar':'Nueva'} tarea</h3><button onclick="document.getElementById('taskDialog').close()">Cerrar</button></div><div class="form">
+    <div><label>Área</label><input id="t_area" value="${esc(x.area||'')}"></div><div><label>Responsable</label><input id="t_resp" value="${esc(x.responsible||'')}"></div>
+    <div class="full"><label>Tarea</label><textarea id="t_title" rows="3">${esc(x.title||'')}</textarea></div><div><label>Estado</label><select id="t_status"><option>Pendiente</option><option>En curso</option><option>Pendiente validación</option><option>Completado</option></select></div></div><div class="actions">${id?'<button class="danger" onclick="deleteTask(\''+id+'\')">Eliminar</button>':''}<button class="primary" onclick="saveTask('${id||''}')">Guardar</button></div></div>`;
+  $('#t_status').value=x.status||'Pendiente'; dlg.showModal();
+}
+async function saveTask(id){
+  const data={ area:$('#t_area').value.trim(), responsible:$('#t_resp').value.trim(), title:$('#t_title').value.trim(), status:$('#t_status').value };
+  const r=id?await client.from('tasks').update(data).eq('id',id):await client.from('tasks').insert(data);
+  if(r.error)return toast(r.error.message); $('#taskDialog').close(); await loadAll();
+}
+async function deleteTask(id){ if(!confirm('¿Eliminar tarea?'))return; const r=await client.from('tasks').delete().eq('id',id); if(r.error)return toast(r.error.message); $('#taskDialog').close(); await loadAll(); }
+
+async function seedInitialData(){
+  if (!client || !session) return toast('Inicia sesión primero');
+  if (!confirm('Importar datos iniciales. Si ya existen, se actualizarán por external_id. ¿Continuar?')) return;
+  const data = await fetch('data/initial-data.json').then(r=>r.json());
+  if (data.allergens?.length) {
+    const allergens = data.allergens.map(a=>({ code:a.code, name:a.name }));
+    const r = await client.from('allergens').upsert(allergens, { onConflict:'code' }); if(r.error) return toast(r.error.message);
+  }
+  const items = (data.records||[]).map(r=>({ external_id:r.id, area:r.area, category:r.categoria, name:r.plato, allergen_codes:normalizeCodes(r.codigos), allergen_text:r.alergenos, ingredients:r.ingredientes, preparation:r.elaboracion, traces:r.trazas, source:r.fuente, status:r.estado, observations:r.observaciones }));
+  for (let i=0;i<items.length;i+=200) { const r=await client.from('items').upsert(items.slice(i,i+200), { onConflict:'external_id' }); if(r.error) return toast(r.error.message); }
+  const tasks=(data.tasks||[]).map(t=>({area:t.area,title:t.tarea,responsible:t.responsable,status:t.estado}));
+  if(tasks.length){ const r=await client.from('tasks').insert(tasks); if(r.error) console.warn(r.error); }
+  toast('Datos iniciales importados'); await loadAll();
+}
+function exportJson(){
+  download('alergenos-guadiana-export.json', JSON.stringify({ exportedAt:new Date().toISOString(), ...state }, null, 2), 'application/json');
+}
+function exportCsv(){
+  const rows=[['area','categoria','plato','codigos','ingredientes','alergenos','elaboracion','trazas','estado','fuente']];
+  state.items.forEach(x=>rows.push([x.area,x.category,x.name,(x.allergen_codes||[]).join(', '),x.ingredients,x.allergen_text,x.preparation,x.traces,x.status,x.source]));
+  download('alergenos-guadiana.csv', rows.map(r=>r.map(csvCell).join(';')).join('\n'), 'text/csv;charset=utf-8');
+}
+function download(name, content, type){ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([content],{type})); a.download=name; a.click(); URL.revokeObjectURL(a.href); }
+async function importJsonFile(){
+  const f=$('#jsonFile').files[0]; if(!f)return toast('Selecciona un archivo JSON');
+  const data=JSON.parse(await f.text());
+  const records = data.records || data.items || [];
+  const items = records.map(r=>({ external_id:r.external_id||r.id, area:r.area, category:r.category||r.categoria, name:r.name||r.plato, allergen_codes:r.allergen_codes||normalizeCodes(r.codigos), allergen_text:r.allergen_text||r.alergenos, ingredients:r.ingredients||r.ingredientes, preparation:r.preparation||r.elaboracion, traces:r.traces||r.trazas, source:r.source||r.fuente, status:r.status||r.estado, observations:r.observations||r.observaciones }));
+  for (let i=0;i<items.length;i+=200) { const r=await client.from('items').upsert(items.slice(i,i+200), { onConflict:'external_id' }); if(r.error) return toast(r.error.message); }
+  toast('JSON importado'); await loadAll();
+}
+
+window.openItemDialog=openItemDialog; window.saveItem=saveItem; window.deleteItem=deleteItem; window.openSupplierDialog=openSupplierDialog; window.saveSupplier=saveSupplier; window.deleteSupplier=deleteSupplier; window.openTaskDialog=openTaskDialog; window.saveTask=saveTask; window.deleteTask=deleteTask;
+init();
