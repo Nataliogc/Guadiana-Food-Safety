@@ -15,7 +15,8 @@ import {
   AlertCircle,
   BookOpen,
   Calendar,
-  Lock
+  Lock,
+  X
 } from 'lucide-react';
 
 interface FoodItem {
@@ -52,18 +53,6 @@ interface Task {
   status: string;
 }
 
-interface GeneratedReportLog {
-  id: string;
-  generated_at: string;
-  report_type: string;
-  filters_used: any;
-  total_items: number;
-  pending_items: number;
-  validated_items: number;
-  notes: string | null;
-  profiles?: { email: string; full_name: string } | null;
-}
-
 interface AuditPanelProps {
   items: FoodItem[];
   suppliers: Supplier[];
@@ -83,6 +72,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<'generator' | 'logs'>('generator');
   const [isGenerated, setIsGenerated] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   
   // Filter states
   const [reportFilter, setReportFilter] = useState<string>('completo');
@@ -164,7 +154,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
 
   const filteredItems = getFilteredItems();
 
-  // Audit totals for current system state (always calculated on full items list)
+  // Audit totals for current system state
   const totalItemsCount = items.length;
   const validatedItems = items.filter(x => x.status === 'validado');
   const pendingItems = items.filter(x => x.status === 'pendiente');
@@ -185,21 +175,53 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
   
   const criticalTasks = tasks.filter(t => (t.priority === 'critica' || t.priority === 'alta') && t.status !== 'completada');
 
-  // Overall Plan Status
+  // Report-specific calculations based on filtered items
+  const reportPending = filteredItems.filter(x => x.status === 'pendiente');
+  const reportRevision = filteredItems.filter(x => x.status === 'en_revision');
+  const reportNoIngredients = filteredItems.filter(x => !x.ingredients || x.ingredients.trim() === '');
+  const reportNoAllergens = filteredItems.filter(x => !x.allergen_codes || x.allergen_codes.trim() === '');
+  const reportNoPreparation = filteredItems.filter(x => !x.preparation || x.preparation.trim() === '');
+
+  // Overall Plan Status (Calculated automatically for the generated report context)
   const getOverallState = () => {
-    const pct = totalItemsCount > 0 ? (validatedItems.length / totalItemsCount) * 100 : 0;
-    if (pct === 100) return 'Validado';
-    if (pct >= 90) return 'Validado parcialmente';
-    if (pct > 0) return 'En revisión';
-    return 'Borrador';
+    if (reportNoIngredients.length > 0 || reportNoAllergens.length > 0) {
+      return 'BORRADOR';
+    }
+    if (reportPending.length > 0 || reportRevision.length > 0) {
+      return 'EN REVISIÓN';
+    }
+    // VALIDADO: only if 100% of included items are validated, no missing ingredients/allergens, and no critical tasks
+    const hasAnyIssue = reportPending.length > 0 || reportRevision.length > 0 || 
+                         reportNoIngredients.length > 0 || reportNoAllergens.length > 0 || 
+                         criticalTasks.length > 0;
+    if (!hasAnyIssue && filteredItems.length > 0) {
+      return 'VALIDADO';
+    }
+    return 'VALIDADO PARCIALMENTE';
   };
 
-  const getOverallBadgeClass = (state: string) => {
+  const getOverallBadgeStyle = (state: string) => {
     switch (state) {
-      case 'Validado': return 'validado';
-      case 'Validado parcialmente': return 'en_revision';
-      case 'En revisión': return 'pendiente';
-      default: return 'pendiente';
+      case 'VALIDADO':
+        return { backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #10b981', padding: '4px 10px', borderRadius: '4px' };
+      case 'VALIDADO PARCIALMENTE':
+        return { backgroundColor: '#dbeafe', color: '#1e40af', border: '1px solid #3b82f6', padding: '4px 10px', borderRadius: '4px' };
+      case 'EN REVISIÓN':
+        return { backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', padding: '4px 10px', borderRadius: '4px' };
+      case 'BORRADOR':
+        return { backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444', padding: '4px 10px', borderRadius: '4px' };
+      default:
+        return { backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #9ca3af', padding: '4px 10px', borderRadius: '4px' };
+    }
+  };
+
+  // Check before generating report
+  const handleGenerateClick = () => {
+    const state = getOverallState();
+    if (state !== 'VALIDADO') {
+      setShowConfirmModal(true);
+    } else {
+      handleGenerateReport();
     }
   };
 
@@ -220,7 +242,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
             notes_included: !!notesText
           },
           total_items: filteredItems.length,
-          pending_items: filteredItems.filter(x => x.status === 'pendiente').length,
+          pending_items: reportPending.length,
           validated_items: filteredItems.filter(x => x.status === 'validado').length,
           notes: notesText || null
         });
@@ -289,6 +311,70 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
     document.body.appendChild(downloadAnchor);
     downloadAnchor.click();
     downloadAnchor.remove();
+  };
+
+  // Helper to render verification column observations
+  const renderVerificationObservations = (item: FoodItem) => {
+    const list: string[] = [];
+    if (item.status === 'pendiente') {
+      list.push('Pendiente de validación por Cocina/Restauración');
+    }
+    if (!item.ingredients || item.ingredients.trim() === '') {
+      list.push('Faltan ingredientes');
+    }
+    if (!item.allergen_codes || item.allergen_codes.trim() === '') {
+      list.push('Faltan alérgenos');
+    }
+    if (!item.traces || item.traces.trim() === '') {
+      list.push('Pendiente revisión de trazas');
+    }
+    if (!item.supplier_notes || item.supplier_notes.trim() === '') {
+      list.push('Pendiente ficha técnica/proveedor');
+    }
+
+    if (list.length === 0) {
+      return <span style={{ color: '#047857', fontWeight: 600 }}>✓ Conforme y Validado</span>;
+    }
+
+    return (
+      <ul style={{ margin: 0, paddingLeft: '14px', color: '#b91c1c', fontSize: '0.68rem', lineHeight: '1.3' }}>
+        {list.map((obs, idx) => (
+          <li key={idx} style={{ marginBottom: '2px' }}>{obs}</li>
+        ))}
+      </ul>
+    );
+  };
+
+  // Helper to render the status badge in the matrix
+  const renderItemStatusBadge = (item: FoodItem) => {
+    const isIncomplete = (!item.ingredients || item.ingredients.trim() === '') || (!item.allergen_codes || item.allergen_codes.trim() === '');
+    if (isIncomplete) {
+      return (
+        <span style={{ backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #ef4444', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 'bold' }}>
+          INCOMPLETO / CRÍTICO
+        </span>
+      );
+    }
+    switch (item.status) {
+      case 'validado':
+        return (
+          <span style={{ backgroundColor: '#d1fae5', color: '#065f46', border: '1px solid #10b981', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 'bold' }}>
+            VALIDADO
+          </span>
+        );
+      case 'en_revision':
+        return (
+          <span style={{ backgroundColor: '#dbeafe', color: '#1e40af', border: '1px solid #3b82f6', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 'bold' }}>
+            EN REVISIÓN
+          </span>
+        );
+      default:
+        return (
+          <span style={{ backgroundColor: '#fef3c7', color: '#92400e', border: '1px solid #f59e0b', padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem', fontWeight: 'bold' }}>
+            PENDIENTE
+          </span>
+        );
+    }
   };
 
   return (
@@ -370,7 +456,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
 
               <button 
                 className="btn btn-primary" 
-                onClick={handleGenerateReport}
+                onClick={handleGenerateClick}
                 style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
               >
                 <BookOpen size={18} />
@@ -414,6 +500,30 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
             {/* Document sheet */}
             <div className="dossier-document-sheet" style={{ backgroundColor: '#ffffff', color: '#000', padding: '50px', border: '1px solid #d1d5db', borderRadius: 'var(--radius-lg)', maxWidth: '900px', margin: '0 auto', boxShadow: 'var(--shadow-md)' }}>
               
+              {/* MANDATORY WARNING AT THE BEGINNING IF PENDING ITEMS EXIST */}
+              {(reportPending.length > 0 || reportRevision.length > 0) && (
+                <div style={{ padding: '16px 20px', backgroundColor: '#fffbeb', border: '2px solid #f59e0b', borderRadius: '6px', color: '#b45309', marginBottom: '24px', fontSize: '0.85rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 'bold', fontSize: '0.95rem', marginBottom: '6px' }}>
+                    <AlertTriangle size={18} />
+                    <span>[AVISO DE REVISIÓN]</span>
+                  </div>
+                  <p style={{ margin: '0 0 10px 0', fontWeight: 600 }}>
+                    “AVISO: Este informe contiene registros pendientes de revisión o validación. La información no debe considerarse definitiva hasta su validación por Cocina/Restauración.”
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.8rem', borderTop: '1px solid #fde68a', paddingTop: '8px' }}>
+                    <span>• Registros pendientes de validación: <strong>{reportPending.length}</strong></span>
+                    <span>• Registros en revisión: <strong>{reportRevision.length}</strong></span>
+                    <span>• Registros sin ingredientes: <strong>{reportNoIngredients.length}</strong></span>
+                    <span>• Registros sin alérgenos declarados: <strong>{reportNoAllergens.length}</strong></span>
+                    <span>• Proveedores sin ficha técnica: <strong>{suppliersNoTech.length}</strong></span>
+                    <span>• Tareas críticas abiertas: <strong>{criticalTasks.length}</strong></span>
+                  </div>
+                  <p style={{ margin: '8px 0 0 0', fontSize: '0.75rem', fontStyle: 'italic' }}>
+                    Este informe contiene {reportPending.length} registros pendientes, {reportRevision.length} registros en revisión y {suppliersNoTech.length} proveedores sin ficha técnica. Documento no validado completamente.
+                  </p>
+                </div>
+              )}
+
               {/* PAGE 1: PORTADA */}
               <div className="page-break" style={{ minHeight: '800px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', borderBottom: '2px solid #e5e7eb', paddingBottom: '40px', marginBottom: '40px' }}>
                 
@@ -446,10 +556,10 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                     <p style={{ margin: '4px 0' }}><strong>Fecha de emisión:</strong> {new Date().toLocaleDateString('es-ES')}</p>
                     <p style={{ margin: '4px 0' }}><strong>Versión del informe:</strong> v2.0 (Supabase)</p>
                     <p style={{ margin: '4px 0' }}><strong>Filtro aplicado:</strong> {reportFilter.toUpperCase()}</p>
-                    <p style={{ margin: '4px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <strong>Estado General del Plan:</strong> 
-                      <span className={`badge ${getOverallBadgeClass(getOverallState())}`} style={{ display: 'inline-block', fontSize: '0.75rem', fontWeight: 'bold' }}>
-                        {getOverallState().toUpperCase()}
+                    <p style={{ margin: '4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <strong>Estado del Informe:</strong> 
+                      <span style={getOverallBadgeStyle(getOverallState())}>
+                        {getOverallState()}
                       </span>
                     </p>
                   </div>
@@ -578,31 +688,125 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', fontSize: '0.82rem', marginBottom: '14px' }}>
                   <div style={{ padding: '12px', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
-                    <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Platos y Elaboraciones:</strong></p>
-                    <p style={{ margin: '4px 0' }}>• Total Registrados: <strong>{totalItemsCount}</strong></p>
-                    <p style={{ margin: '4px 0', color: '#047857' }}>• Validados por Cocina: <strong>{validatedItems.length}</strong></p>
-                    <p style={{ margin: '4px 0', color: '#c2410c' }}>• En Revisión: <strong>{revisionItems.length}</strong></p>
-                    <p style={{ margin: '4px 0', color: '#b91c1c' }}>• Pendientes: <strong>{pendingItems.length}</strong></p>
+                    <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Platos y Elaboraciones (Filtradas):</strong></p>
+                    <p style={{ margin: '4px 0' }}>• Total Registrados: <strong>{filteredItems.length}</strong></p>
+                    <p style={{ margin: '4px 0', color: '#047857' }}>• Validados por Cocina: <strong>{filteredItems.filter(x => x.status === 'validado').length}</strong></p>
+                    <p style={{ margin: '4px 0', color: '#c2410c' }}>• En Revisión: <strong>{reportRevision.length}</strong></p>
+                    <p style={{ margin: '4px 0', color: '#b91c1c' }}>• Pendientes: <strong>{reportPending.length}</strong></p>
                   </div>
                   <div style={{ padding: '12px', border: '1px solid #e5e7eb', borderRadius: '4px' }}>
-                    <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Proveedores y Tareas:</strong></p>
+                    <p style={{ margin: '4px 0', fontSize: '0.9rem' }}><strong>Proveedores y Tareas (General):</strong></p>
                     <p style={{ margin: '4px 0' }}>• Proveedores Registrados: <strong>{totalSuppliersCount}</strong></p>
                     <p style={{ margin: '4px 0', color: '#047857' }}>• Ficha Técnica Disponible: <strong>{suppliersWithTech.length}</strong></p>
                     <p style={{ margin: '4px 0', color: '#b91c1c' }}>• Ficha Técnica Pendiente: <strong>{suppliersNoTech.length}</strong></p>
                     <p style={{ margin: '4px 0', color: '#b91c1c' }}>• Tareas Críticas Pendientes: <strong>{criticalTasks.length}</strong></p>
                   </div>
                 </div>
-
-                {/* Warning box if there are pending items */}
-                {pendingItems.length > 0 && (
-                  <div style={{ padding: '10px 14px', backgroundColor: 'rgba(197, 160, 89, 0.08)', border: '1px solid rgba(197, 160, 89, 0.3)', borderRadius: 'var(--radius-sm)', color: '#855d0c', fontSize: '0.8rem', display: 'flex', gap: '8px', alignItems: 'center' }}>
-                    <AlertTriangle size={16} />
-                    <span>Hay un total de {pendingItems.length} platos catalogados como <strong>Pendientes</strong>. Los datos correspondientes a estos platos son provisionales.</span>
-                  </div>
-                )}
               </div>
 
-              {/* SECTION 6: MATRIZ DE PLATOS, INGREDIENTES Y ALÉRGENOS */}
+              {/* NEW SECTION: INCIDENCIAS DETECTADAS ANTES DE VALIDACIÓN */}
+              <div className="page-break" style={{ marginBottom: '40px' }}>
+                <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
+                  4.2. INCIDENCIAS DETECTADAS ANTES DE VALIDACIÓN
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '12px' }}>
+                  Detalle de incidencias y vacíos documentales detectados en este conjunto de datos para su resolución prioritaria:
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.8rem' }}>
+                  {/* 1. Platos pendientes */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #f59e0b', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
+                    <strong>1. Platos pendientes de validar ({reportPending.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {reportPending.length > 0 
+                        ? reportPending.map(x => x.name).join(', ') 
+                        : 'Ninguno pendiente.'}
+                    </span>
+                  </div>
+
+                  {/* 2. Platos en revisión */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #3b82f6', backgroundColor: '#eff6ff', borderRadius: '4px' }}>
+                    <strong>2. Platos en revisión ({reportRevision.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {reportRevision.length > 0 
+                        ? reportRevision.map(x => x.name).join(', ') 
+                        : 'Ninguno en revisión.'}
+                    </span>
+                  </div>
+
+                  {/* 3. Platos sin ingredientes */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #ef4444', backgroundColor: '#fef2f2', borderRadius: '4px' }}>
+                    <strong>3. Platos sin ingredientes registrados ({reportNoIngredients.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {reportNoIngredients.length > 0 
+                        ? reportNoIngredients.map(x => x.name).join(', ') 
+                        : 'Ninguno sin ingredientes.'}
+                    </span>
+                  </div>
+
+                  {/* 4. Platos sin alérgenos */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #ef4444', backgroundColor: '#fef2f2', borderRadius: '4px' }}>
+                    <strong>4. Platos sin alérgenos declarados ({reportNoAllergens.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {reportNoAllergens.length > 0 
+                        ? reportNoAllergens.map(x => x.name).join(', ') 
+                        : 'Ninguno sin alérgenos.'}
+                    </span>
+                  </div>
+
+                  {/* 5. Platos sin elaboración/preparación */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #f97316', backgroundColor: '#fff7ed', borderRadius: '4px' }}>
+                    <strong>5. Platos sin elaboración/preparación registrada ({reportNoPreparation.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {reportNoPreparation.length > 0 
+                        ? reportNoPreparation.map(x => x.name).join(', ') 
+                        : 'Todos disponen de preparación.'}
+                    </span>
+                  </div>
+
+                  {/* 6. Desayuno buffet incompleto */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #d97706', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
+                    <strong>6. Productos de desayuno buffet incompletos o sin validar ({incompleteBreakfast.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {incompleteBreakfast.length > 0 
+                        ? incompleteBreakfast.map(x => x.name).join(', ') 
+                        : 'Todos validados y completos.'}
+                    </span>
+                  </div>
+
+                  {/* 7. Menús de grupo incompletos */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #d97706', backgroundColor: '#fffbeb', borderRadius: '4px' }}>
+                    <strong>7. Menús de grupo incompletos o sin validar ({incompleteGroups.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {incompleteGroups.length > 0 
+                        ? incompleteGroups.map(x => x.name).join(', ') 
+                        : 'Todos validados y completos.'}
+                    </span>
+                  </div>
+
+                  {/* 8. Proveedores sin ficha técnica */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #ef4444', backgroundColor: '#fef2f2', borderRadius: '4px' }}>
+                    <strong>8. Proveedores sin ficha técnica disponible ({suppliersNoTech.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {suppliersNoTech.length > 0 
+                        ? suppliersNoTech.map(x => x.name).join(', ') 
+                        : 'Todos disponen de ficha técnica.'}
+                    </span>
+                  </div>
+
+                  {/* 9. Tareas críticas pendientes */}
+                  <div style={{ padding: '8px 12px', borderLeft: '4px solid #ef4444', backgroundColor: '#fef2f2', borderRadius: '4px' }}>
+                    <strong>9. Tareas críticas de seguridad alimentaria pendientes ({criticalTasks.length}):</strong>
+                    <span style={{ display: 'block', color: '#4b5563', marginTop: '2px' }}>
+                      {criticalTasks.length > 0 
+                        ? criticalTasks.map(x => `${x.area}: ${x.title}`).join(' | ') 
+                        : 'Ninguna tarea crítica pendiente.'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION 5: MATRIZ DE PLATOS, INGREDIENTES Y ALÉRGENOS */}
               <div className="page-break" style={{ marginBottom: '40px', pageBreakBefore: 'always' }}>
                 <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
                   5. MATRIZ DE PLATOS, INGREDIENTES Y ALÉRGENOS
@@ -615,12 +819,12 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem', textAlign: 'left' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid #000000', backgroundColor: '#f3f4f6' }}>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db' }}>Área / Categoría</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db' }}>Plato / Producto</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db' }}>Ingredientes</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db' }}>Alérgenos (Trazas)</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db' }}>Estado</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db' }}>Verificó</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '15%' }}>Área / Categoría</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '20%' }}>Plato / Producto</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '25%' }}>Ingredientes</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '15%' }}>Alérgenos (Trazas)</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '10%' }}>Estado</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '15%' }}>Verificación</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -643,13 +847,10 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                             )}
                           </td>
                           <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'center' }}>
-                            <span className={`badge ${item.status}`} style={{ fontSize: '0.65rem', padding: '2px 4px' }}>
-                              {item.status}
-                            </span>
+                            {renderItemStatusBadge(item)}
                           </td>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db', fontSize: '0.7rem', color: '#4b5563' }}>
-                            {item.validated_by || '—'}
-                            {item.validated_at && <span style={{ display: 'block', fontSize: '0.6rem', color: '#9ca3af' }}>{new Date(item.validated_at).toLocaleDateString('es-ES')}</span>}
+                          <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>
+                            {renderVerificationObservations(item)}
                           </td>
                         </tr>
                       ))}
@@ -662,84 +863,10 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                 )}
               </div>
 
-              {/* SECTION 7: APARTADO DE INCIDENCIAS Y PUNTOS PENDIENTES */}
-              <div className="page-break" style={{ marginBottom: '40px', pageBreakBefore: 'always' }}>
-                <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
-                  6. PUNTOS PENDIENTES E INCIDENCIAS OPERATIVAS DETECTADAS
-                </h3>
-                <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '14px' }}>
-                  Esta sección muestra de forma transparente los vacíos documentales pendientes de subsanar por el equipo. Este listado demuestra control interno y mejora continua:
-                </p>
-
-                <div style={{ fontSize: '0.8rem', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {noIngredients.length > 0 && (
-                    <div style={{ padding: '8px 12px', borderLeft: '3px solid #b91c1c', backgroundColor: '#fef2f2' }}>
-                      <strong>Platos sin ingredientes registrados ({noIngredients.length}):</strong>
-                      <span style={{ color: '#4b5563', display: 'block', marginTop: '2px' }}>
-                        {noIngredients.slice(0, 10).map(x => x.name).join(', ')}{noIngredients.length > 10 ? '...' : ''}
-                      </span>
-                    </div>
-                  )}
-                  {noAllergens.length > 0 && (
-                    <div style={{ padding: '8px 12px', borderLeft: '3px solid #b91c1c', backgroundColor: '#fef2f2' }}>
-                      <strong>Platos sin código de alérgenos declarado ({noAllergens.length}):</strong>
-                      <span style={{ color: '#4b5563', display: 'block', marginTop: '2px' }}>
-                        {noAllergens.slice(0, 10).map(x => x.name).join(', ')}{noAllergens.length > 10 ? '...' : ''}
-                      </span>
-                    </div>
-                  )}
-                  {noPreparation.length > 0 && (
-                    <div style={{ padding: '8px 12px', borderLeft: '3px solid #f97316', backgroundColor: '#fff7ed' }}>
-                      <strong>Platos sin método de elaboración registrado ({noPreparation.length}):</strong>
-                      <span style={{ color: '#4b5563', display: 'block', marginTop: '2px' }}>
-                        {noPreparation.slice(0, 10).map(x => x.name).join(', ')}{noPreparation.length > 10 ? '...' : ''}
-                      </span>
-                    </div>
-                  )}
-                  {incompleteBreakfast.length > 0 && (
-                    <div style={{ padding: '8px 12px', borderLeft: '3px solid #c5a059', backgroundColor: '#fcfcf9' }}>
-                      <strong>Productos de Desayuno Buffet incompletos o sin validar ({incompleteBreakfast.length}):</strong>
-                      <span style={{ color: '#4b5563', display: 'block', marginTop: '2px' }}>
-                        {incompleteBreakfast.slice(0, 10).map(x => x.name).join(', ')}{incompleteBreakfast.length > 10 ? '...' : ''}
-                      </span>
-                    </div>
-                  )}
-                  {suppliersNoTech.length > 0 && (
-                    <div style={{ padding: '8px 12px', borderLeft: '3px solid #b91c1c', backgroundColor: '#fef2f2' }}>
-                      <strong>Proveedores con Ficha Técnica pendiente ({suppliersNoTech.length}):</strong>
-                      <span style={{ color: '#4b5563', display: 'block', marginTop: '2px' }}>
-                        {suppliersNoTech.map(x => x.name).join(', ')}
-                      </span>
-                    </div>
-                  )}
-                  {suppliersNoPhone.length > 0 && (
-                    <div style={{ padding: '8px 12px', borderLeft: '3px solid #9ca3af', backgroundColor: '#f9fafb' }}>
-                      <strong>Proveedores sin teléfono registrado ({suppliersNoPhone.length}):</strong>
-                      <span style={{ color: '#4b5563', display: 'block', marginTop: '2px' }}>
-                        {suppliersNoPhone.map(x => x.name).join(', ')}
-                      </span>
-                    </div>
-                  )}
-                  {criticalTasks.length > 0 && (
-                    <div style={{ padding: '8px 12px', borderLeft: '3px solid #b91c1c', backgroundColor: '#fef2f2' }}>
-                      <strong>Tareas de Seguridad Alimentaria críticas pendientes ({criticalTasks.length}):</strong>
-                      <span style={{ color: '#4b5563', display: 'block', marginTop: '2px' }}>
-                        {criticalTasks.map(x => `${x.area}: ${x.title}`).join(' | ')}
-                      </span>
-                    </div>
-                  )}
-                  {noIngredients.length === 0 && noAllergens.length === 0 && suppliersNoTech.length === 0 && criticalTasks.length === 0 && (
-                    <p style={{ color: 'var(--color-success)', fontWeight: 600 }}>
-                      ✓ No se han detectado incidencias críticas pendientes de revisión.
-                    </p>
-                  )}
-                </div>
-              </div>
-
               {/* SECTION 8: RELACIÓN DE PROVEEDORES */}
               <div style={{ marginBottom: '40px' }}>
                 <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
-                  7. RELACIÓN DE PROVEEDORES ALIMENTICIOS
+                  6. RELACIÓN DE PROVEEDORES ALIMENTICIOS
                 </h3>
                 <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '12px' }}>
                   Proveedores que suministran materias primas al Hotel Guadiana:
@@ -784,7 +911,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
               {/* SECTION 9: CONTAMINACIÓN CRUZADA */}
               <div className="page-break" style={{ marginBottom: '40px', pageBreakBefore: 'always' }}>
                 <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
-                  8. GESTIÓN Y CONTROL DE LA CONTAMINACIÓN CRUZADA
+                  7. GESTIÓN Y CONTROL DE LA CONTAMINACIÓN CRUZADA
                 </h3>
                 <p style={{ fontSize: '0.85rem', lineHeight: '1.6', color: '#374151', marginBottom: '14px' }}>
                   En las cocinas de hostelería colectiva se identifican y controlan los siguientes puntos críticos para reducir el riesgo de transferencia cruzada de alérgenos:
@@ -804,7 +931,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
               {/* SECTION 10: PROCEDIMIENTO DE INFORMACIÓN AL CLIENTE */}
               <div style={{ marginBottom: '40px' }}>
                 <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
-                  9. PROCEDIMIENTO DE INFORMACIÓN AL CLIENTE
+                  8. PROCEDIMIENTO DE INFORMACIÓN AL CLIENTE
                 </h3>
                 <div style={{ fontSize: '0.85rem', lineHeight: '1.6', color: '#374151', border: '1px solid #d1d5db', padding: '12px 16px', borderRadius: '4px', backgroundColor: '#f9fafb' }}>
                   <strong>INSTRUCCIÓN OBLIGATORIA PARA EL PERSONAL:</strong><br />
@@ -815,7 +942,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
               {/* SECTION 11: CONTROL DE CAMBIOS */}
               <div className="page-break" style={{ marginBottom: '40px', pageBreakBefore: 'always' }}>
                 <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
-                  10. REGISTRO OPERATIVO Y CONTROL DE CAMBIOS (TRAZABILIDAD)
+                  9. REGISTRO OPERATIVO Y CONTROL DE CAMBIOS (TRAZABILIDAD)
                 </h3>
                 <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '12px' }}>
                   Registro de auditoría interna de los últimos cambios de datos en el sistema (trazabilidad):
@@ -872,7 +999,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
               {/* SECTION 12: VALIDACIÓN INTERNA / FIRMAS */}
               <div style={{ marginTop: '50px', pageBreakInside: 'avoid' }}>
                 <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '30px' }}>
-                  11. VALIDACIÓN Y FIRMAS DE AUTOCONTROL
+                  10. VALIDACIÓN Y FIRMAS DE AUTOCONTROL
                 </h3>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '40px', marginTop: '20px' }}>
@@ -896,6 +1023,11 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                 <div style={{ marginTop: '30px', fontSize: '0.8rem', color: '#374151' }}>
                   <p><strong>Fecha de la última revisión del plan completo:</strong> _____ / _____ / 2026</p>
                   <p><strong>Observaciones de la revisión:</strong> ____________________________________________________________________________________________________________________________________</p>
+                </div>
+
+                {/* MANDATORY FOOTER DISCLAIMER */}
+                <div style={{ marginTop: '30px', padding: '10px 14px', border: '1px solid #d1d5db', borderRadius: '4px', backgroundColor: '#f9fafb', fontSize: '0.8rem', fontStyle: 'italic', color: '#4b5563' }}>
+                  “Este informe refleja el estado de revisión existente en la fecha de emisión. Los registros marcados como pendientes o en revisión deberán ser validados por Cocina/Restauración antes de considerarse información definitiva.”
                 </div>
               </div>
 
@@ -965,6 +1097,65 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                 No se han registrado generaciones de informes todavía.
               </p>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* CONFIRMATION DIALOG IF GENERATING REPORT WITH PENDING/INCOMPLETE ITEMS */}
+      {showConfirmModal && (
+        <div className="modal-backdrop no-print" style={{ position: 'fixed', top: 0, left: 0, width: '100%', height: '100%', backgroundColor: 'rgba(0, 0, 0, 0.6)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 }}>
+          <div className="modal-content" style={{ backgroundColor: 'var(--color-bg)', padding: '24px', borderRadius: 'var(--radius-md)', maxWidth: '500px', width: '90%', boxShadow: 'var(--shadow-lg)', border: '1px solid var(--color-border)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#d97706', marginBottom: '14px' }}>
+              <AlertTriangle size={24} />
+              <h4 style={{ margin: 0, fontWeight: 600 }}>Confirmación de Informe en Revisión</h4>
+            </div>
+            
+            <p style={{ fontSize: '0.88rem', lineHeight: '1.5', margin: '0 0 16px 0', color: 'var(--color-text)' }}>
+              Este informe contiene registros pendientes o incompletos. ¿Deseas generarlo como documento <strong>EN REVISIÓN</strong>?
+            </p>
+            
+            <div style={{ fontSize: '0.78rem', backgroundColor: 'rgba(0,0,0,0.03)', padding: '10px 14px', borderRadius: '4px', marginBottom: '20px', color: 'var(--color-text-muted)' }}>
+              <p style={{ margin: '0 0 6px 0', fontWeight: 'bold' }}>Incidencias detectadas en la selección:</p>
+              <ul style={{ margin: 0, paddingLeft: '14px', lineHeight: '1.4' }}>
+                {reportPending.length > 0 && (
+                  <li>{reportPending.length} platos en estado pendiente.</li>
+                )}
+                {reportRevision.length > 0 && (
+                  <li>{reportRevision.length} platos en revisión.</li>
+                )}
+                {reportNoIngredients.length > 0 && (
+                  <li>{reportNoIngredients.length} platos sin ingredientes registrados.</li>
+                )}
+                {reportNoAllergens.length > 0 && (
+                  <li>{reportNoAllergens.length} platos sin alérgenos declarados.</li>
+                )}
+                {suppliersNoTech.length > 0 && (
+                  <li>{suppliersNoTech.length} proveedores sin ficha técnica disponible.</li>
+                )}
+                {criticalTasks.length > 0 && (
+                  <li>{criticalTasks.length} tareas críticas abiertas.</li>
+                )}
+              </ul>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button 
+                className="btn btn-outline" 
+                onClick={() => setShowConfirmModal(false)}
+              >
+                Cancelar
+              </button>
+              <button 
+                className="btn btn-primary" 
+                onClick={() => {
+                  setShowConfirmModal(false);
+                  handleGenerateReport();
+                }}
+                style={{ backgroundColor: '#d97706', borderColor: '#d97706' }}
+              >
+                Generar como En revisión
+              </button>
+            </div>
           </div>
         </div>
       )}
