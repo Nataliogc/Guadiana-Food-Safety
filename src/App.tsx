@@ -9,6 +9,7 @@ import { SupplierForm } from './components/SupplierForm';
 import { TasksPanel } from './components/TasksPanel';
 import { ImportExportPanel } from './components/ImportExportPanel';
 import { UsersPanel } from './components/UsersPanel';
+import { AuditPanel } from './components/AuditPanel';
 import { ShieldAlert, LogIn, UserPlus, RefreshCw } from 'lucide-react';
 
 interface Toast {
@@ -477,6 +478,23 @@ function App() {
           <UsersPanel 
             currentUserId={session.user.id}
             addToast={addToast}
+          />
+        );
+      case 'audit':
+        return (
+          <AuditPanel 
+            items={foodItems}
+            suppliers={suppliers}
+            tasks={tasks}
+            userRole={profile.role}
+            onEditItem={(item) => {
+              setActiveItem(item);
+              setIsItemFormOpen(true);
+            }}
+            onEditSupplier={(supplier) => {
+              setActiveSupplier(supplier);
+              setIsSupplierFormOpen(true);
+            }}
           />
         );
       default:

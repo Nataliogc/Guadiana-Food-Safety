@@ -1025,7 +1025,7 @@ tr:hover td {
     color: #000000;
   }
   
-  .sidebar, .top-navbar, .toolbar, .btn, .logout-btn, .navbar-actions, .toast-container, .modal-backdrop {
+  .sidebar, .top-navbar, .toolbar, .btn, .logout-btn, .navbar-actions, .toast-container, .modal-backdrop, .no-print {
     display: none !important;
   }
   
