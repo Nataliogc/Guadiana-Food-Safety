@@ -52,6 +52,7 @@ export const Layout: React.FC<LayoutProps> = ({
   const getRoleLabel = (role: string) => {
     switch (role) {
       case 'admin': return 'Administrador';
+      case 'gestor': return 'Gestor';
       case 'cocina': return 'Cocina';
       case 'sala': return 'Sala / Restauración';
       case 'consulta': return 'Consulta';
@@ -132,6 +133,14 @@ export const Layout: React.FC<LayoutProps> = ({
               <ShieldCheck size={16} style={{ color: '#319795' }} />
               <div>
                 <strong>Acceso Administrador:</strong> Tienes control total del sistema (configuración de alérgenos, informes y gestión de usuarios).
+              </div>
+            </div>
+          )}
+          {profileRole === 'gestor' && (
+            <div style={{ padding: '10px 16px', backgroundColor: '#eff6ff', borderLeft: '4px solid #3b82f6', color: '#1e40af', fontSize: '0.8rem', borderRadius: '4px', display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }} className="no-print">
+              <ShieldCheck size={16} style={{ color: '#3b82f6' }} />
+              <div>
+                <strong>Acceso Gestor:</strong> Tienes permisos de edición operativa del plan de alérgenos (platos, proveedores, tareas e informes), sin gestión de usuarios.
               </div>
             </div>
           )}

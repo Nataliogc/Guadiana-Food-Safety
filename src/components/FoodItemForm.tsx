@@ -74,7 +74,7 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
   const [selectedAllergens, setSelectedAllergens] = useState<number[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const isReadOnly = userRole !== 'admin' && userRole !== 'cocina';
+  const isReadOnly = userRole !== 'admin' && userRole !== 'cocina' && userRole !== 'gestor';
   const canDelete = item && userRole === 'admin'; // Solo admin puede eliminar físicamente de la base de datos
 
   useEffect(() => {
@@ -87,7 +87,13 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
       setTraces(item.traces || '');
       setPreparation(item.preparation || '');
       setSupplierNotes(item.supplier_notes || '');
-      setStatus(item.status || 'pendiente');
+      
+      // Gestor cannot keep validated status; it must go to en_revision for re-validation
+      if (item.status === 'validado' && userRole === 'gestor') {
+        setStatus('en_revision');
+      } else {
+        setStatus(item.status || 'pendiente');
+      }
 
       // Parse allergen codes
       if (item.allergen_codes) {
@@ -111,7 +117,7 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
       setStatus('pendiente');
       setSelectedAllergens([]);
     }
-  }, [item]);
+  }, [item, userRole]);
 
   // Manejar el cambio en los checkboxes de alérgenos
   const handleAllergenChange = (code: number) => {
@@ -330,8 +336,15 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
                 >
                   <option value="pendiente">Pendiente de validar</option>
                   <option value="en_revision">En revisión</option>
-                  <option value="validado">✓ Validado por Cocina</option>
+                  {(userRole === 'admin' || userRole === 'cocina') && (
+                    <option value="validado">✓ Validado por Cocina</option>
+                  )}
                 </select>
+                {userRole === 'gestor' && item?.status === 'validado' && (
+                  <span style={{ fontSize: '0.78rem', color: '#b45309', marginTop: '6px', fontWeight: '500', display: 'block' }}>
+                    Nota: Al modificar este plato validado, su estado cambiará a "En revisión" hasta que sea validado de nuevo por Cocina.
+                  </span>
+                )}
               </div>
 
               {item && item.validated_by && (

@@ -6,7 +6,7 @@ interface Profile {
   id: string;
   email: string | null;
   full_name: string | null;
-  role: 'admin' | 'cocina' | 'sala' | 'consulta';
+  role: 'admin' | 'gestor' | 'cocina' | 'sala' | 'consulta';
   created_at?: string;
 }
 
@@ -23,7 +23,7 @@ export const UsersPanel: React.FC<UsersPanelProps> = ({ currentUserId, addToast 
   // Edit states
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState<string>('');
-  const [editRole, setEditRole] = useState<'admin' | 'cocina' | 'sala' | 'consulta'>('consulta');
+  const [editRole, setEditRole] = useState<'admin' | 'gestor' | 'cocina' | 'sala' | 'consulta'>('consulta');
 
   const fetchProfiles = async () => {
     setLoading(true);
@@ -90,6 +90,7 @@ export const UsersPanel: React.FC<UsersPanelProps> = ({ currentUserId, addToast 
   const getRoleLabel = (role: string) => {
     switch (role) {
       case 'admin': return 'Administrador';
+      case 'gestor': return 'Gestor';
       case 'cocina': return 'Cocina';
       case 'sala': return 'Sala / Restauración';
       case 'consulta': return 'Consulta';
@@ -101,6 +102,8 @@ export const UsersPanel: React.FC<UsersPanelProps> = ({ currentUserId, addToast 
     switch (role) {
       case 'admin':
         return { backgroundColor: '#e6fffa', color: '#234e52', border: '1px solid #319795' };
+      case 'gestor':
+        return { backgroundColor: '#fffaf0', color: '#7b341e', border: '1px solid #dd6b20' };
       case 'cocina':
         return { backgroundColor: '#f0fff4', color: '#22543d', border: '1px solid #38a169' };
       case 'sala':
@@ -209,6 +212,7 @@ export const UsersPanel: React.FC<UsersPanelProps> = ({ currentUserId, addToast 
                             <option value="consulta">Consulta</option>
                             <option value="sala">Sala / Restauración</option>
                             <option value="cocina">Cocina</option>
+                            <option value="gestor">Gestor</option>
                             <option value="admin">Administrador</option>
                           </select>
                         )

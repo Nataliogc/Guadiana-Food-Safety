@@ -77,6 +77,7 @@ La aplicación tiene un control estricto de roles tanto en el frontend como en l
 | Rol | Descripción y Permisos |
 | :--- | :--- |
 | **`admin`** | Acceso total: Puede crear, editar y eliminar platos/productos, proveedores, tareas y perfiles de usuario. |
+| **`gestor`** | Gestión operativa avanzada: Permisos completos de lectura y edición sobre platos/productos, proveedores y tareas. Puede generar informes oficiales para Sanidad. No puede gestionar usuarios, borrar proveedores ni modificar configuraciones de seguridad. |
 | **`cocina`** | Gestión operativa: Puede crear y editar platos/productos, y gestionar tareas pendientes de cocina. |
 | **`sala`** | Consulta y servicio: Puede ver platos y proveedores. Puede crear y editar tareas de servicio/sala. |
 | **`consulta`** | Solo lectura (por defecto): Útil para que cualquier empleado del hotel consulte alérgenos e ingredientes sin realizar modificaciones accidentales. |

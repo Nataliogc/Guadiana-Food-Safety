@@ -85,7 +85,8 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
   const [loadingHistory, setLoadingHistory] = useState(false);
 
   const isAdmin = userRole === 'admin';
-  const canGenerateFull = userRole === 'admin' || userRole === 'cocina';
+  const canViewAuditLogs = userRole === 'admin' || userRole === 'gestor';
+  const canGenerateFull = userRole === 'admin' || userRole === 'cocina' || userRole === 'gestor';
 
   // Load audit logs and generated reports logs
   const loadHistoryData = async () => {
@@ -112,8 +113,8 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
       
       setReportLogs(reports || []);
 
-      // 3. Fetch audit logs if admin
-      if (isAdmin) {
+      // 3. Fetch audit logs if admin or gestor
+      if (canViewAuditLogs) {
         const { data: audits } = await supabase
           .from('audit_log')
           .select('*')
@@ -948,7 +949,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                   Registro de auditoría interna de los últimos cambios de datos en el sistema (trazabilidad):
                 </p>
 
-                {isAdmin ? (
+                {canViewAuditLogs ? (
                   auditLogs.length > 0 ? (
                     <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.7rem', textAlign: 'left' }}>
                       <thead>
@@ -991,7 +992,7 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                 ) : (
                   <div style={{ padding: '10px 14px', backgroundColor: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: '4px', fontSize: '0.8rem', color: '#6b7280', display: 'flex', gap: '8px', alignItems: 'center' }}>
                     <Lock size={14} />
-                    <span>Sección confidencial. Solo visible para el rol Administrador.</span>
+                    <span>Sección confidencial. Solo visible para roles de Administrador o Gestor.</span>
                   </div>
                 )}
               </div>

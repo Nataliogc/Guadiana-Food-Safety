@@ -23,7 +23,7 @@ export const ImportExportPanel: React.FC<ImportExportPanelProps> = ({
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isError, setIsError] = useState(false);
 
-  const isAdminOrCocina = userRole === 'admin' || userRole === 'cocina';
+  const isAdminOrCocina = userRole === 'admin' || userRole === 'cocina' || userRole === 'gestor';
 
   const showStatus = (msg: string, err = false) => {
     setStatusMessage(msg);

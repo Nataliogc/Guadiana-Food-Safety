@@ -1,5 +1,5 @@
 import React from 'react';
-import { Plus, Check, AlertCircle, Eye, Phone, Mail } from 'lucide-react';
+import { Plus, Check, AlertCircle, Eye, Phone, Mail, FileText } from 'lucide-react';
 
 interface Supplier {
   id: string;
@@ -26,13 +26,13 @@ export const SuppliersTable: React.FC<SuppliersTableProps> = ({
   onEditSupplier,
   onNewSupplier
 }) => {
-  const isAdmin = userRole === 'admin';
+  const canEdit = userRole === 'admin' || userRole === 'gestor';
 
   return (
     <div className="panel">
       <div className="panel-header">
         <h3>Registro de Proveedores</h3>
-        {isAdmin && (
+        {canEdit && (
           <button className="btn btn-primary" onClick={onNewSupplier}>
             <Plus size={16} />
             <span>Nuevo Proveedor</span>
@@ -45,11 +45,11 @@ export const SuppliersTable: React.FC<SuppliersTableProps> = ({
           <table>
             <thead>
               <tr>
-                <th>Nombre del Proveedor</th>
+                <th>Proveedor</th>
                 <th>Contacto</th>
-                <th>Productos Suministrados</th>
                 <th>Ficha Técnica</th>
-                <th>Observaciones</th>
+                <th>Estado de Ficha</th>
+                <th>Observaciones / Productos</th>
                 <th style={{ width: '100px' }}>Acciones</th>
               </tr>
             </thead>
@@ -58,65 +58,57 @@ export const SuppliersTable: React.FC<SuppliersTableProps> = ({
                 <tr key={supplier.id}>
                   <td><strong>{supplier.name}</strong></td>
                   <td>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.82rem' }}>
-                      {supplier.phone && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Phone size={12} />
-                          {supplier.phone}
-                        </span>
-                      )}
-                      {supplier.email && (
-                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <Mail size={12} />
-                          {supplier.email}
-                        </span>
-                      )}
-                      {!supplier.phone && !supplier.email && <span style={{ color: 'var(--color-text-muted)' }}>Sin contacto</span>}
+                    <div style={{ fontSize: '0.85rem' }}>{supplier.contact_person || '—'}</div>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+                      {supplier.phone && `Tel: ${supplier.phone}`} {supplier.email && `| ${supplier.email}`}
                     </div>
                   </td>
                   <td>
-                    <p style={{ 
-                      fontSize: '0.85rem', 
-                      maxWidth: '250px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap' 
-                    }} title={supplier.products || ''}>
-                      {supplier.products || '—'}
-                    </p>
-                  </td>
-                  <td>
-                    {supplier.technical_sheet_available ? (
-                      <span className="badge validado" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <Check size={12} />
-                        Disponible
-                      </span>
+                    {supplier.technical_sheet_url ? (
+                      <a 
+                        href={supplier.technical_sheet_url} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="technical-sheet-link"
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                      >
+                        <FileText size={14} />
+                        <span>Ver Ficha</span>
+                      </a>
                     ) : (
-                      <span className="badge pendiente" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
-                        <AlertCircle size={12} />
-                        Pendiente
+                      <span style={{ fontSize: '0.8rem', color: 'var(--color-danger)', fontWeight: '500' }}>
+                        Sin Ficha Cargada
                       </span>
                     )}
                   </td>
                   <td>
+                    <span className={`badge ${supplier.technical_sheet_status || 'pendiente'}`}>
+                      {supplier.technical_sheet_status === 'validada' 
+                        ? 'Validada' 
+                        : supplier.technical_sheet_status === 'en_revision' 
+                          ? 'En revisión' 
+                          : 'Pendiente'}
+                    </span>
+                  </td>
+                  <td>
                     <p style={{ 
                       fontSize: '0.82rem', 
-                      color: 'var(--color-text-muted)',
-                      maxWidth: '220px',
+                      color: 'var(--color-text-main)',
+                      maxWidth: '300px',
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap'
-                    }} title={supplier.notes || ''}>
+                    }}>
                       {supplier.notes || '—'}
                     </p>
                   </td>
                   <td>
                     <button 
                       onClick={() => onEditSupplier(supplier)}
-                      className={`btn btn-outline btn-small ${isAdmin ? 'btn-secondary' : ''}`}
+                      className={`btn btn-outline btn-small ${canEdit ? 'btn-secondary' : ''}`}
                       style={{ display: 'flex', alignItems: 'center', gap: '4px' }}
                     >
-                      {isAdmin ? (
+                      {canEdit ? (
                         <span>Editar</span>
                       ) : (
                         <>

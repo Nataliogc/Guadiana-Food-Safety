@@ -4,7 +4,8 @@ import {
   AlertTriangle, 
   CheckCircle2, 
   Users,
-  AlertOctagon
+  AlertOctagon,
+  Shield
 } from 'lucide-react';
 
 interface DashboardProps {
@@ -59,6 +60,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
           >
             Gestión de usuarios
           </button>
+        </div>
+      )}
+
+      {/* Gestor Quick Info */}
+      {profileRole === 'gestor' && (
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          padding: '12px 20px',
+          borderRadius: 'var(--radius-md)',
+          marginBottom: '20px',
+          fontSize: '0.88rem',
+          color: '#475569'
+        }} className="no-print">
+          <Shield size={18} style={{ color: '#64748b' }} />
+          <span><strong>Acceso operativo sin gestión de usuarios:</strong> Tienes control de edición sobre el plan de alérgenos y proveedores, sin permisos de administración de cuentas.</span>
         </div>
       )}
       {/* Statistics Counters */}

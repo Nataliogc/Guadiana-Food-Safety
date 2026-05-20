@@ -93,7 +93,7 @@ export const FoodItemsTable: React.FC<FoodItemsTableProps> = ({
     });
   }, [items, searchTerm, areaFilter, statusFilter]);
 
-  const canEdit = userRole === 'admin' || userRole === 'cocina';
+  const canEdit = userRole === 'admin' || userRole === 'cocina' || userRole === 'gestor';
 
   return (
     <div className="panel">

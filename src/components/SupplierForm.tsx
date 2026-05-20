@@ -35,7 +35,7 @@ export const SupplierForm: React.FC<SupplierFormProps> = ({
   const [loading, setLoading] = useState(false);
 
   const isAdmin = userRole === 'admin';
-  const isReadOnly = !isAdmin;
+  const isReadOnly = userRole !== 'admin' && userRole !== 'gestor';
   const canDelete = supplier && isAdmin;
 
   useEffect(() => {

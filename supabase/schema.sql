@@ -46,9 +46,10 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS role text DEFAULT 'consulta
 -- Agregar restricción de rol si no existe
 DO $$
 BEGIN
-  ALTER TABLE public.profiles ADD CONSTRAINT check_profiles_role CHECK (role IN ('admin', 'cocina', 'sala', 'consulta'));
+  ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS check_profiles_role;
+  ALTER TABLE public.profiles ADD CONSTRAINT check_profiles_role CHECK (role IN ('admin', 'gestor', 'cocina', 'sala', 'consulta'));
 EXCEPTION
-  WHEN duplicate_object THEN NULL;
+  WHEN others THEN NULL;
 END $$;
 
 -- ---------------------------------------------------------------------
@@ -279,15 +280,17 @@ CREATE POLICY "suppliers_select_authenticated" ON public.suppliers
   FOR SELECT TO authenticated USING (true);
 
 DROP POLICY IF EXISTS "suppliers_insert_admin" ON public.suppliers;
-CREATE POLICY "suppliers_insert_admin" ON public.suppliers 
+DROP POLICY IF EXISTS "suppliers_insert_admin_gestor" ON public.suppliers;
+CREATE POLICY "suppliers_insert_admin_gestor" ON public.suppliers 
   FOR INSERT TO authenticated 
-  WITH CHECK (public.current_user_role() = 'admin');
+  WITH CHECK (public.current_user_role() IN ('admin', 'gestor'));
 
 DROP POLICY IF EXISTS "suppliers_update_admin" ON public.suppliers;
-CREATE POLICY "suppliers_update_admin" ON public.suppliers 
+DROP POLICY IF EXISTS "suppliers_update_admin_gestor" ON public.suppliers;
+CREATE POLICY "suppliers_update_admin_gestor" ON public.suppliers 
   FOR UPDATE TO authenticated 
-  USING (public.current_user_role() = 'admin') 
-  WITH CHECK (public.current_user_role() = 'admin');
+  USING (public.current_user_role() IN ('admin', 'gestor')) 
+  WITH CHECK (public.current_user_role() IN ('admin', 'gestor'));
 
 DROP POLICY IF EXISTS "suppliers_delete_admin" ON public.suppliers;
 CREATE POLICY "suppliers_delete_admin" ON public.suppliers 
@@ -300,15 +303,23 @@ CREATE POLICY "food_items_select_authenticated" ON public.food_items
   FOR SELECT TO authenticated USING (true);
 
 DROP POLICY IF EXISTS "food_items_insert_admin_cocina" ON public.food_items;
-CREATE POLICY "food_items_insert_admin_cocina" ON public.food_items 
+DROP POLICY IF EXISTS "food_items_insert_admin_gestor_cocina" ON public.food_items;
+CREATE POLICY "food_items_insert_admin_gestor_cocina" ON public.food_items 
   FOR INSERT TO authenticated 
-  WITH CHECK (public.current_user_role() IN ('admin', 'cocina'));
+  WITH CHECK (
+    public.current_user_role() IN ('admin', 'cocina') 
+    OR (public.current_user_role() = 'gestor' AND status IN ('pendiente', 'en_revision'))
+  );
 
 DROP POLICY IF EXISTS "food_items_update_admin_cocina" ON public.food_items;
-CREATE POLICY "food_items_update_admin_cocina" ON public.food_items 
+DROP POLICY IF EXISTS "food_items_update_admin_gestor_cocina" ON public.food_items;
+CREATE POLICY "food_items_update_admin_gestor_cocina" ON public.food_items 
   FOR UPDATE TO authenticated 
-  USING (public.current_user_role() IN ('admin', 'cocina')) 
-  WITH CHECK (public.current_user_role() IN ('admin', 'cocina'));
+  USING (public.current_user_role() IN ('admin', 'gestor', 'cocina')) 
+  WITH CHECK (
+    public.current_user_role() IN ('admin', 'cocina') 
+    OR (public.current_user_role() = 'gestor' AND status IN ('pendiente', 'en_revision'))
+  );
 
 DROP POLICY IF EXISTS "food_items_delete_admin" ON public.food_items;
 CREATE POLICY "food_items_delete_admin" ON public.food_items 
@@ -338,9 +349,10 @@ CREATE POLICY "tasks_delete_admin" ON public.tasks
 
 -- POLÍTICAS: audit_log
 DROP POLICY IF EXISTS "audit_select_admin" ON public.audit_log;
-CREATE POLICY "audit_select_admin" ON public.audit_log 
+DROP POLICY IF EXISTS "audit_select_admin_gestor" ON public.audit_log;
+CREATE POLICY "audit_select_admin_gestor" ON public.audit_log 
   FOR SELECT TO authenticated 
-  USING (public.current_user_role() = 'admin');
+  USING (public.current_user_role() IN ('admin', 'gestor'));
 
 -- ---------------------------------------------------------------------
 -- 6. TABLA: generated_reports
@@ -362,9 +374,10 @@ ALTER TABLE public.generated_reports ENABLE ROW LEVEL SECURITY;
 
 -- Políticas de RLS para generated_reports
 DROP POLICY IF EXISTS "reports_select_admin_cocina" ON public.generated_reports;
-CREATE POLICY "reports_select_admin_cocina" ON public.generated_reports
+DROP POLICY IF EXISTS "reports_select_admin_gestor_cocina" ON public.generated_reports;
+CREATE POLICY "reports_select_admin_gestor_cocina" ON public.generated_reports
   FOR SELECT TO authenticated
-  USING (public.current_user_role() IN ('admin', 'cocina'));
+  USING (public.current_user_role() IN ('admin', 'gestor', 'cocina'));
 
 DROP POLICY IF EXISTS "reports_insert_authenticated" ON public.generated_reports;
 CREATE POLICY "reports_insert_authenticated" ON public.generated_reports
