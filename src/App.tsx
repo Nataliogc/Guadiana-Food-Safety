@@ -144,6 +144,26 @@ function App() {
     }
   }, [session, loadData]);
 
+  const getFriendlyAuthErrorMessage = (errorMsg: string): string => {
+    const msg = errorMsg.toLowerCase();
+    if (msg.includes('rate limit') || msg.includes('too many requests')) {
+      return 'Límite de solicitudes excedido. Por seguridad, por favor espera 60 segundos antes de volver a intentarlo.';
+    }
+    if (msg.includes('invalid credentials') || msg.includes('invalid login credentials')) {
+      return 'Correo electrónico o contraseña incorrectos.';
+    }
+    if (msg.includes('email not confirmed')) {
+      return 'El correo electrónico no ha sido verificado aún. Revisa tu bandeja de entrada.';
+    }
+    if (msg.includes('user already exists')) {
+      return 'Ya existe una cuenta registrada con este correo electrónico.';
+    }
+    if (msg.includes('password should be')) {
+      return 'La contraseña debe tener al menos 6 caracteres.';
+    }
+    return errorMsg;
+  };
+
   // 3. Auth Actions
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -154,7 +174,7 @@ function App() {
       if (error) throw error;
       addToast('Sesión iniciada correctamente.', 'success');
     } catch (err: any) {
-      addToast(err.message || 'Error de conexión', 'error');
+      addToast(getFriendlyAuthErrorMessage(err.message || 'Error de conexión'), 'error');
     } finally {
       setAuthLoading(false);
     }
@@ -178,7 +198,7 @@ function App() {
       if (error) throw error;
       addToast('Si el correo existe, recibirás un enlace para restablecer la contraseña.', 'success');
     } catch (err: any) {
-      addToast(err.message || 'Error al procesar la solicitud', 'error');
+      addToast(getFriendlyAuthErrorMessage(err.message || 'Error al procesar la solicitud'), 'error');
     } finally {
       setAuthLoading(false);
     }
@@ -206,7 +226,7 @@ function App() {
       setAuthMode('login');
       window.history.replaceState(null, '', window.location.origin + window.location.pathname);
     } catch (err: any) {
-      addToast(err.message || 'Error al actualizar contraseña. El enlace puede haber caducado.', 'error');
+      addToast(getFriendlyAuthErrorMessage(err.message || 'Error al actualizar contraseña. El enlace puede haber caducado.'), 'error');
     } finally {
       setAuthLoading(false);
     }
@@ -241,7 +261,7 @@ function App() {
       }
       setAuthMode('login');
     } catch (err: any) {
-      addToast(err.message || 'Error en el registro', 'error');
+      addToast(getFriendlyAuthErrorMessage(err.message || 'Error en el registro'), 'error');
     } finally {
       setAuthLoading(false);
     }
