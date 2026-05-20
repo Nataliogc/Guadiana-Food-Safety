@@ -18,6 +18,7 @@ import {
   Lock,
   X
 } from 'lucide-react';
+import { ALLERGENS_LIST, ALLERGEN_MAP, parseAllergenCodes } from '../utils/allergens';
 
 interface FoodItem {
   id: string;
@@ -616,10 +617,10 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
               {/* SECTION 4: LEYENDA DE ALÉRGENOS */}
               <div className="page-break" style={{ marginBottom: '40px', pageBreakBefore: 'always' }}>
                 <h3 style={{ fontSize: '1.3rem', borderBottom: '2px solid #000000', paddingBottom: '6px', color: '#0d3822', marginBottom: '14px' }}>
-                  3. LEYENDA DE LOS 14 ALÉRGENOS OBLIGATORIOS
+                  3. LEYENDA Y CÓDIGOS DE ALÉRGENOS DEL ESTABLECIMIENTO
                 </h3>
                 <p style={{ fontSize: '0.85rem', color: '#374151', marginBottom: '12px' }}>
-                  A continuación se detalla el código identificativo establecido para la gestión documental de alérgenos según el Reglamento (UE) Nº 1169/2011:
+                  A continuación se detalla la numeración interna de alérgenos utilizada por el Hotel Guadiana en sus cartas, menús y fichas de control documental para la gestión de alérgenos según el Reglamento (UE) Nº 1169/2011:
                 </p>
                 
                 <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem', textAlign: 'left', marginBottom: '20px' }}>
@@ -820,41 +821,73 @@ export const AuditPanel: React.FC<AuditPanelProps> = ({
                   <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.75rem', textAlign: 'left' }}>
                     <thead>
                       <tr style={{ borderBottom: '2px solid #000000', backgroundColor: '#f3f4f6' }}>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '15%' }}>Área / Categoría</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '20%' }}>Plato / Producto</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '12%' }}>Área / Categoría</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '18%' }}>Plato / Producto</th>
                         <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '25%' }}>Ingredientes</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '15%' }}>Alérgenos (Trazas)</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '12%' }}>Alérgenos (Códigos)</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '13%' }}>Posibles Trazas / Obs.</th>
                         <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '10%' }}>Estado</th>
-                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '15%' }}>Verificación</th>
+                        <th style={{ padding: '6px', border: '1px solid #d1d5db', width: '10%' }}>Verificación</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredItems.map(item => (
-                        <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>
-                            <span style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block' }}>{item.area}</span>
-                            <strong>{item.category}</strong>
-                          </td>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db' }}><strong>{item.name}</strong></td>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db', color: '#4b5563', fontSize: '0.7rem' }}>
-                            {item.ingredients || '—'}
-                          </td>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>
-                            <span style={{ color: '#b91c1c', fontWeight: 600 }}>{item.allergens || 'Ninguno'}</span>
-                            {item.traces && (
-                              <span style={{ display: 'block', fontSize: '0.65rem', color: '#6b7280' }}>
-                                (Trazas: {item.traces})
-                              </span>
-                            )}
-                          </td>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'center' }}>
-                            {renderItemStatusBadge(item)}
-                          </td>
-                          <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>
-                            {renderVerificationObservations(item)}
-                          </td>
-                        </tr>
-                      ))}
+                      {filteredItems.map(item => {
+                        const codes = parseAllergenCodes(item.allergen_codes);
+                        return (
+                          <tr key={item.id} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                            <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>
+                              <span style={{ fontSize: '0.7rem', color: '#6b7280', display: 'block' }}>{item.area}</span>
+                              <strong>{item.category}</strong>
+                            </td>
+                            <td style={{ padding: '6px', border: '1px solid #d1d5db' }}><strong>{item.name}</strong></td>
+                            <td style={{ padding: '6px', border: '1px solid #d1d5db', color: '#4b5563', fontSize: '0.7rem' }}>
+                              {item.ingredients || '—'}
+                            </td>
+                            <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>
+                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                {codes.length > 0 ? (
+                                  codes.map(num => {
+                                    const name = ALLERGEN_MAP[num] || 'Alérgeno';
+                                    const label = `${num}. ${name}`;
+                                    return (
+                                      <span 
+                                        key={num} 
+                                        style={{
+                                          display: 'inline-flex',
+                                          alignItems: 'center',
+                                          justifyContent: 'center',
+                                          width: '18px',
+                                          height: '18px',
+                                          borderRadius: '3px',
+                                          backgroundColor: '#c94a29',
+                                          color: '#ffffff',
+                                          fontSize: '0.65rem',
+                                          fontWeight: 'bold'
+                                        }}
+                                        title={label}
+                                        aria-label={label}
+                                      >
+                                        {num}
+                                      </span>
+                                    );
+                                  })
+                                ) : (
+                                  <span style={{ fontSize: '0.7rem', color: '#6b7280' }}>Ninguno</span>
+                                )}
+                              </div>
+                            </td>
+                            <td style={{ padding: '6px', border: '1px solid #d1d5db', color: '#4b5563', fontSize: '0.7rem' }}>
+                              {item.traces || 'Sin trazas'}
+                            </td>
+                            <td style={{ padding: '6px', border: '1px solid #d1d5db', textAlign: 'center' }}>
+                              {renderItemStatusBadge(item)}
+                            </td>
+                            <td style={{ padding: '6px', border: '1px solid #d1d5db' }}>
+                              {renderVerificationObservations(item)}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 ) : (

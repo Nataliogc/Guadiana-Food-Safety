@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Trash2, ShieldCheck } from 'lucide-react';
+import { ALLERGENS_LIST, ALLERGEN_MAP, parseAllergenCodes } from '../utils/allergens';
 
 interface FoodItem {
   id: string;
@@ -35,23 +36,6 @@ const AREAS = [
   'Coffee Break',
   'Eventos',
   'Cócteles'
-];
-
-const ALLERGENS_LIST = [
-  { code: 1, name: 'Pescado' },
-  { code: 2, name: 'Frutos secos' },
-  { code: 3, name: 'Lácteos' },
-  { code: 4, name: 'Moluscos' },
-  { code: 5, name: 'Gluten' },
-  { code: 6, name: 'Crustáceos' },
-  { code: 7, name: 'Huevos' },
-  { code: 8, name: 'Cacahuetes' },
-  { code: 9, name: 'Soja' },
-  { code: 10, name: 'Apio' },
-  { code: 11, name: 'Mostaza' },
-  { code: 12, name: 'Sésamo' },
-  { code: 13, name: 'Altramuz' },
-  { code: 14, name: 'Sulfitos' }
 ];
 
 export const FoodItemForm: React.FC<FoodItemFormProps> = ({
@@ -97,11 +81,7 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
 
       // Parse allergen codes
       if (item.allergen_codes) {
-        const codes = item.allergen_codes
-          .split(/[,/;\s]+/)
-          .map(c => parseInt(c.trim(), 10))
-          .filter(num => !isNaN(num));
-        setSelectedAllergens(codes);
+        setSelectedAllergens(parseAllergenCodes(item.allergen_codes));
       } else {
         setSelectedAllergens([]);
       }
@@ -132,7 +112,7 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
     setSelectedAllergens(updated);
     
     // Auto-generar lista de textos de alérgenos
-    const names = updated.map(c => ALLERGENS_LIST.find(a => a.code === c)?.name || '').filter(Boolean);
+    const names = updated.map(c => ALLERGEN_MAP[c]).filter(Boolean);
     setAllergenText(names.join(', '));
   };
 
@@ -147,7 +127,9 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
 
     setLoading(true);
     try {
-      const allergenCodesStr = selectedAllergens.join(', ');
+      const sortedCodes = [...selectedAllergens].sort((a, b) => a - b);
+      const allergenCodesStr = sortedCodes.join(', ');
+      const allergenNamesStr = sortedCodes.map(c => ALLERGEN_MAP[c]).filter(Boolean).join(', ');
       
       const payload: Partial<FoodItem> = {
         area,
@@ -155,7 +137,7 @@ export const FoodItemForm: React.FC<FoodItemFormProps> = ({
         name: name.trim(),
         ingredients: ingredients.trim() || null,
         allergen_codes: allergenCodesStr || null,
-        allergens: allergenText.trim() || null,
+        allergens: allergenNamesStr || null,
         traces: traces.trim() || null,
         preparation: preparation.trim() || null,
         supplier_notes: supplierNotes.trim() || null,

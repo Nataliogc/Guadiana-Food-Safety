@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Search, Plus, Filter, FileText, CheckCircle2, AlertTriangle, Eye } from 'lucide-react';
+import { ALLERGENS_LIST, ALLERGEN_MAP, parseAllergenCodes } from '../utils/allergens';
 
 interface FoodItem {
   id: string;
@@ -43,23 +44,6 @@ const STATUSES = [
   { id: 'validado', label: 'Validado' }
 ];
 
-const ALLERGEN_NAMES: Record<number, { name: string; letter: string }> = {
-  1: { name: 'Pescado', letter: 'PE' },
-  2: { name: 'Frutos secos', letter: 'FS' },
-  3: { name: 'Lácteos', letter: 'LA' },
-  4: { name: 'Moluscos', letter: 'MO' },
-  5: { name: 'Gluten', letter: 'GL' },
-  6: { name: 'Crustáceos', letter: 'CR' },
-  7: { name: 'Huevos', letter: 'HU' },
-  8: { name: 'Cacahuetes', letter: 'CA' },
-  9: { name: 'Soja', letter: 'SO' },
-  10: { name: 'Apio', letter: 'AP' },
-  11: { name: 'Mostaza', letter: 'MS' },
-  12: { name: 'Sésamo', letter: 'SE' },
-  13: { name: 'Altramuz', letter: 'AL' },
-  14: { name: 'Sulfitos', letter: 'SU' }
-};
-
 export const FoodItemsTable: React.FC<FoodItemsTableProps> = ({
   items,
   userRole,
@@ -70,21 +54,19 @@ export const FoodItemsTable: React.FC<FoodItemsTableProps> = ({
   const [areaFilter, setAreaFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
-  const parseAllergenCodes = (codesStr: string | null): number[] => {
-    if (!codesStr) return [];
-    return codesStr
-      .split(/[,/;\s]+/)
-      .map(code => parseInt(code.trim(), 10))
-      .filter(num => !isNaN(num) && num >= 1 && num <= 14);
-  };
-
   const filteredItems = useMemo(() => {
     return items.filter(item => {
+      const searchTrimmed = searchTerm.trim();
+      const searchNum = parseInt(searchTrimmed, 10);
+      const isSearchNum = !isNaN(searchNum) && searchNum >= 1 && searchNum <= 14;
+      const matchAllergenCode = isSearchNum && parseAllergenCodes(item.allergen_codes).includes(searchNum);
+
       const matchSearch = 
         item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (item.ingredients || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
         (item.allergens || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (item.category || '').toLowerCase().includes(searchTerm.toLowerCase());
+        (item.category || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        matchAllergenCode;
 
       const matchArea = !areaFilter || item.area === areaFilter;
       const matchStatus = !statusFilter || item.status === statusFilter;
@@ -182,20 +164,24 @@ export const FoodItemsTable: React.FC<FoodItemsTableProps> = ({
                     </td>
                     <td>
                       <div className="allergens-tags-list">
-                        {Array.from({ length: 14 }, (_, idx) => {
-                          const num = idx + 1;
-                          const isActive = codes.includes(num);
-                          const allergenInfo = ALLERGEN_NAMES[num];
-                          return (
-                            <span 
-                              key={num} 
-                              className={`allergen-tag ${isActive ? 'active' : ''}`}
-                              title={`${num}: ${allergenInfo.name}`}
-                            >
-                              {allergenInfo.letter}
-                            </span>
-                          );
-                        })}
+                        {codes.length > 0 ? (
+                          codes.map(num => {
+                            const name = ALLERGEN_MAP[num] || 'Alérgeno';
+                            const label = `${num}. ${name}`;
+                            return (
+                              <span 
+                                key={num} 
+                                className="allergen-tag active"
+                                title={label}
+                                aria-label={label}
+                              >
+                                {num}
+                              </span>
+                            );
+                          })
+                        ) : (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>Ninguno</span>
+                        )}
                       </div>
                     </td>
                     <td>
@@ -248,6 +234,24 @@ export const FoodItemsTable: React.FC<FoodItemsTableProps> = ({
             No se encontraron platos que coincidan con los filtros de búsqueda.
           </p>
         )}
+      </div>
+
+      {/* Legend Block */}
+      <div style={{ marginTop: '20px', padding: '15px 20px', backgroundColor: '#f9fafb', borderRadius: 'var(--radius-md)', border: '1px solid var(--color-border)' }}>
+        <h4 style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <FileText size={16} />
+          <span>Numeración interna de alérgenos utilizada por el Hotel Guadiana</span>
+        </h4>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '8px', fontSize: '0.8rem', color: 'var(--color-text-muted)' }}>
+          {ALLERGENS_LIST.map(alg => (
+            <div key={alg.code} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span className="allergen-tag active" style={{ width: '18px', height: '18px', fontSize: '0.65rem', borderRadius: '3px', flexShrink: 0 }}>
+                {alg.code}
+              </span>
+              <span>{alg.name}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -79,12 +79,17 @@ function App() {
     });
 
     // Detect recovery/reset-password from URL params or hash
-    const params = new URLSearchParams(window.location.search);
-    const isReset = window.location.pathname.endsWith('/reset-password') || 
-                    window.location.hash.includes('reset-password') || 
-                    window.location.hash.includes('type=recovery') ||
-                    params.has('reset');
-    if (isReset) {
+    const hasRecoveryParams = 
+      window.location.hash.includes('type=recovery') ||
+      window.location.hash.includes('access_token') ||
+      window.location.hash.includes('refresh_token') ||
+      window.location.search.includes('type=recovery') ||
+      window.location.search.includes('access_token') ||
+      window.location.search.includes('refresh_token') ||
+      window.location.pathname.endsWith('/reset-password') || 
+      window.location.hash.includes('reset-password');
+
+    if (hasRecoveryParams) {
       setAuthMode('reset-password');
     }
 
@@ -98,6 +103,9 @@ function App() {
         setFoodItems([]);
         setSuppliers([]);
         setTasks([]);
+        setEmail('');
+        setPassword('');
+        setFullName('');
       }
     });
 
@@ -209,13 +217,12 @@ function App() {
     }
     setIsSubmitting(true);
     try {
-      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-      const redirectTo = isLocalhost
-        ? window.location.origin + '/reset-password'
-        : 'https://nataliogc.github.io/Guadiana-Food-Safety/reset-password';
+      const redirectBase = import.meta.env.PROD
+        ? "https://nataliogc.github.io/Guadiana-Food-Safety/"
+        : window.location.origin;
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: redirectTo
+        redirectTo: redirectBase
       });
       if (error) throw error;
       addToast('Si el correo existe, recibirás un enlace para restablecer la contraseña.', 'success');
@@ -318,6 +325,11 @@ function App() {
       addToast('Error al cerrar sesión.', 'error');
     } else {
       addToast('Sesión cerrada.', 'success');
+      setEmail('');
+      setPassword('');
+      setFullName('');
+      setNewPassword('');
+      setConfirmPassword('');
     }
   };
 
@@ -680,7 +692,7 @@ function App() {
               </div>
             </form>
           ) : (
-            <form onSubmit={authMode === 'login' ? handleLogin : handleSignup} className="login-form">
+            <form onSubmit={authMode === 'login' ? handleLogin : handleSignup} className="login-form" autoComplete="off">
               {authMode === 'signup' && (
                 <div className="form-group">
                   <label className="form-label">Nombre Completo</label>
@@ -703,10 +715,10 @@ function App() {
                   type="email" 
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="comunicaciones@hotelguadiana.es"
+                  placeholder="Introduce tu correo electrónico"
                   required
                   className="form-input"
-                  autoComplete="email"
+                  autoComplete="off"
                   disabled={isSubmitting || rateLimitCooldown > 0}
                 />
               </div>

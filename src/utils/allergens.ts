@@ -26,13 +26,20 @@ export const ALLERGEN_MAP: Record<number, string> = ALLERGENS_LIST.reduce((acc, 
 }, {} as Record<number, string>);
 
 /**
- * Parses allergen codes from string (e.g. "1, 5, 7" or "1/5") into a sorted array of numbers
+ * Parses allergen codes from a string (accepting separators like commas, slashes, spaces,
+ * text like "ó" or parentheses) and returns a unique, sorted array of numbers from 1 to 14.
  */
 export const parseAllergenCodes = (codesStr: string | null): number[] => {
   if (!codesStr) return [];
-  return codesStr
-    .split(/[,/;\s]+/)
-    .map(code => parseInt(code.trim(), 10))
-    .filter(num => !isNaN(num) && num >= 1 && num <= 14)
-    .sort((a, b) => a - b);
+  
+  // Extract all sequences of digits from the string
+  const matches = codesStr.match(/\d+/g);
+  if (!matches) return [];
+  
+  const parsed = matches
+    .map(val => parseInt(val, 10))
+    .filter(num => num >= 1 && num <= 14);
+    
+  // Return unique sorted numbers
+  return Array.from(new Set(parsed)).sort((a, b) => a - b);
 };
