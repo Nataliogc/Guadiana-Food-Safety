@@ -49,6 +49,19 @@ function App() {
 
   // UI Alerts Toast List
   const [toasts, setToasts] = useState<Toast[]>([]);
+  
+  // Submit loading and rate-limiting
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [rateLimitCooldown, setRateLimitCooldown] = useState(0);
+
+  useEffect(() => {
+    if (rateLimitCooldown > 0) {
+      const timer = setTimeout(() => {
+        setRateLimitCooldown(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [rateLimitCooldown]);
 
   const addToast = useCallback((message: string, type: 'success' | 'error' = 'success') => {
     const id = Math.random().toString(36).substr(2, 9);
@@ -146,8 +159,8 @@ function App() {
 
   const getFriendlyAuthErrorMessage = (errorMsg: string): string => {
     const msg = errorMsg.toLowerCase();
-    if (msg.includes('rate limit') || msg.includes('too many requests')) {
-      return 'Límite de solicitudes excedido. Por seguridad, por favor espera 60 segundos antes de volver a intentarlo.';
+    if (msg.includes('rate limit') || msg.includes('too many requests') || msg.includes('429')) {
+      return 'Has realizado demasiados intentos. Espera 60 segundos antes de volver a intentarlo.';
     }
     if (msg.includes('invalid credentials') || msg.includes('invalid login credentials')) {
       return 'Correo electrónico o contraseña incorrectos.';
@@ -167,30 +180,39 @@ function App() {
   // 3. Auth Actions
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || rateLimitCooldown > 0) return;
     if (!email || !password) return;
-    setAuthLoading(true);
+    setIsSubmitting(true);
     try {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
       if (error) throw error;
       addToast('Sesión iniciada correctamente.', 'success');
     } catch (err: any) {
+      const isRate = err.status === 429 || 
+                     (err.message && (err.message.toLowerCase().includes('rate limit') || 
+                                      err.message.toLowerCase().includes('too many requests') ||
+                                      err.message.toLowerCase().includes('429')));
+      if (isRate) {
+        setRateLimitCooldown(60);
+      }
       addToast(getFriendlyAuthErrorMessage(err.message || 'Error de conexión'), 'error');
     } finally {
-      setAuthLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleForgotPassword = async () => {
+    if (isSubmitting || rateLimitCooldown > 0) return;
     if (!email) {
       addToast('Por favor, introduce tu correo electrónico en el campo superior.', 'error');
       return;
     }
-    setAuthLoading(true);
+    setIsSubmitting(true);
     try {
-      const isGitHubPages = window.location.hostname.includes('github.io');
-      const redirectTo = isGitHubPages
-        ? window.location.origin + window.location.pathname + '?reset=true'
-        : window.location.origin + '/reset-password';
+      const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const redirectTo = isLocalhost
+        ? window.location.origin + '/reset-password'
+        : 'https://nataliogc.github.io/Guadiana-Food-Safety/reset-password';
 
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: redirectTo
@@ -198,20 +220,28 @@ function App() {
       if (error) throw error;
       addToast('Si el correo existe, recibirás un enlace para restablecer la contraseña.', 'success');
     } catch (err: any) {
+      const isRate = err.status === 429 || 
+                     (err.message && (err.message.toLowerCase().includes('rate limit') || 
+                                      err.message.toLowerCase().includes('too many requests') ||
+                                      err.message.toLowerCase().includes('429')));
+      if (isRate) {
+        setRateLimitCooldown(60);
+      }
       addToast(getFriendlyAuthErrorMessage(err.message || 'Error al procesar la solicitud'), 'error');
     } finally {
-      setAuthLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || rateLimitCooldown > 0) return;
     if (!newPassword) return;
     if (newPassword !== confirmPassword) {
       addToast('Las contraseñas no coinciden.', 'error');
       return;
     }
-    setAuthLoading(true);
+    setIsSubmitting(true);
     try {
       const { error } = await supabase.auth.updateUser({
         password: newPassword
@@ -226,16 +256,24 @@ function App() {
       setAuthMode('login');
       window.history.replaceState(null, '', window.location.origin + window.location.pathname);
     } catch (err: any) {
+      const isRate = err.status === 429 || 
+                     (err.message && (err.message.toLowerCase().includes('rate limit') || 
+                                      err.message.toLowerCase().includes('too many requests') ||
+                                      err.message.toLowerCase().includes('429')));
+      if (isRate) {
+        setRateLimitCooldown(60);
+      }
       addToast(getFriendlyAuthErrorMessage(err.message || 'Error al actualizar contraseña. El enlace puede haber caducado.'), 'error');
     } finally {
-      setAuthLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting || rateLimitCooldown > 0) return;
     if (!email || !password || !fullName) return;
-    setAuthLoading(true);
+    setIsSubmitting(true);
     try {
       const { error, data } = await supabase.auth.signUp({
         email,
@@ -261,9 +299,16 @@ function App() {
       }
       setAuthMode('login');
     } catch (err: any) {
+      const isRate = err.status === 429 || 
+                     (err.message && (err.message.toLowerCase().includes('rate limit') || 
+                                      err.message.toLowerCase().includes('too many requests') ||
+                                      err.message.toLowerCase().includes('429')));
+      if (isRate) {
+        setRateLimitCooldown(60);
+      }
       addToast(getFriendlyAuthErrorMessage(err.message || 'Error en el registro'), 'error');
     } finally {
-      setAuthLoading(false);
+      setIsSubmitting(false);
     }
   };
 
@@ -554,6 +599,23 @@ function App() {
             </p>
           </div>
 
+          {/* Rate Limit Cooldown Notification */}
+          {rateLimitCooldown > 0 && (
+            <div style={{
+              padding: '10px 14px',
+              backgroundColor: '#fee2e2',
+              border: '1px solid #fca5a5',
+              borderRadius: 'var(--radius-sm)',
+              color: '#b91c1c',
+              fontSize: '0.82rem',
+              fontWeight: 600,
+              textAlign: 'center',
+              marginBottom: '15px'
+            }}>
+              Has realizado demasiados intentos. Espera {rateLimitCooldown} segundos antes de volver a intentarlo.
+            </div>
+          )}
+
           {authMode === 'reset-password' ? (
             <form onSubmit={handleResetPassword} className="login-form">
               <h3 style={{ fontSize: '1.1rem', color: 'var(--color-primary)', textAlign: 'center', marginBottom: '10px' }}>
@@ -572,6 +634,8 @@ function App() {
                   placeholder="••••••••"
                   required
                   className="form-input"
+                  autoComplete="new-password"
+                  disabled={isSubmitting || rateLimitCooldown > 0}
                 />
               </div>
 
@@ -584,12 +648,19 @@ function App() {
                   placeholder="••••••••"
                   required
                   className="form-input"
+                  autoComplete="new-password"
+                  disabled={isSubmitting || rateLimitCooldown > 0}
                 />
               </div>
 
               <div className="login-actions">
-                <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }} disabled={authLoading}>
-                  {authLoading ? <RefreshCw size={16} className="spin" /> : <ShieldAlert size={16} />}
+                <button 
+                  type="submit" 
+                  className="btn btn-primary" 
+                  style={{ justifyContent: 'center' }} 
+                  disabled={isSubmitting || rateLimitCooldown > 0}
+                >
+                  {isSubmitting ? <RefreshCw size={16} className="spin" /> : <ShieldAlert size={16} />}
                   <span>Actualizar contraseña</span>
                 </button>
 
@@ -602,7 +673,7 @@ function App() {
                   }}
                   className="btn btn-outline"
                   style={{ justifyContent: 'center', fontSize: '0.8rem' }}
-                  disabled={authLoading}
+                  disabled={isSubmitting || rateLimitCooldown > 0}
                 >
                   <span>Cancelar</span>
                 </button>
@@ -614,12 +685,14 @@ function App() {
                 <div className="form-group">
                   <label className="form-label">Nombre Completo</label>
                   <input 
-                    type="text" 
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                    placeholder="Natalio Fernández"
-                    required
-                    className="form-input"
+                     type="text" 
+                     value={fullName}
+                     onChange={(e) => setFullName(e.target.value)}
+                     placeholder="Natalio Fernández"
+                     required
+                     className="form-input"
+                     autoComplete="name"
+                     disabled={isSubmitting || rateLimitCooldown > 0}
                   />
                 </div>
               )}
@@ -633,6 +706,8 @@ function App() {
                   placeholder="comunicaciones@hotelguadiana.es"
                   required
                   className="form-input"
+                  autoComplete="email"
+                  disabled={isSubmitting || rateLimitCooldown > 0}
                 />
               </div>
 
@@ -645,6 +720,8 @@ function App() {
                   placeholder="••••••••"
                   required
                   className="form-input"
+                  autoComplete={authMode === 'login' ? 'current-password' : 'new-password'}
+                  disabled={isSubmitting || rateLimitCooldown > 0}
                 />
               </div>
 
@@ -653,13 +730,13 @@ function App() {
                   <button
                     type="button"
                     onClick={handleForgotPassword}
-                    disabled={authLoading}
+                    disabled={isSubmitting || rateLimitCooldown > 0}
                     style={{
                       background: 'none',
                       border: 'none',
                       color: 'var(--color-secondary)',
                       fontSize: '0.8rem',
-                      cursor: 'pointer',
+                      cursor: (isSubmitting || rateLimitCooldown > 0) ? 'not-allowed' : 'pointer',
                       textDecoration: 'underline',
                       padding: 0
                     }}
@@ -670,8 +747,13 @@ function App() {
               )}
 
               <div className="login-actions">
-                <button type="submit" className="btn btn-primary" style={{ justifyContent: 'center' }} disabled={authLoading}>
-                  {authLoading ? <RefreshCw size={16} className="spin" /> : <LogIn size={16} />}
+                <button 
+                  type="submit" 
+                  className="btn btn-primary" 
+                  style={{ justifyContent: 'center' }} 
+                  disabled={isSubmitting || rateLimitCooldown > 0}
+                >
+                  {isSubmitting ? <RefreshCw size={16} className="spin" /> : <LogIn size={16} />}
                   <span>{authMode === 'login' ? 'Entrar al Panel' : 'Registrarse'}</span>
                 </button>
 
@@ -680,7 +762,7 @@ function App() {
                   onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
                   className="btn btn-outline"
                   style={{ justifyContent: 'center', fontSize: '0.8rem' }}
-                  disabled={authLoading}
+                  disabled={isSubmitting || rateLimitCooldown > 0}
                 >
                   <UserPlus size={14} />
                   <span>{authMode === 'login' ? 'Crear nueva cuenta' : '¿Ya tienes cuenta? Inicia sesión'}</span>
