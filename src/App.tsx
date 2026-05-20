@@ -8,6 +8,7 @@ import { SuppliersTable } from './components/SuppliersTable';
 import { SupplierForm } from './components/SupplierForm';
 import { TasksPanel } from './components/TasksPanel';
 import { ImportExportPanel } from './components/ImportExportPanel';
+import { UsersPanel } from './components/UsersPanel';
 import { ShieldAlert, LogIn, UserPlus, RefreshCw } from 'lucide-react';
 
 interface Toast {
@@ -466,6 +467,16 @@ function App() {
             tasks={tasks}
             onRefreshData={loadData}
             userRole={profile.role}
+          />
+        );
+      case 'users':
+        if (profile.role !== 'admin') {
+          return <div className="panel"><p style={{ padding: '20px', color: 'var(--color-danger)' }}>Acceso denegado. Solo administradores pueden gestionar usuarios.</p></div>;
+        }
+        return (
+          <UsersPanel 
+            currentUserId={session.user.id}
+            addToast={addToast}
           />
         );
       default:
